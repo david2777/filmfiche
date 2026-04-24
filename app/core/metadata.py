@@ -22,6 +22,7 @@ _EXIF_DATE_KEYS = ["EXIF DateTimeOriginal", "Image DateTime", "EXIF DateTimeDigi
 
 
 def _parse_exif_date(value: str) -> datetime | None:
+    """Parse an EXIF date string into a datetime, returning ``None`` on failure."""
     try:
         return datetime.strptime(value, _EXIF_DATE_FMT)
     except ValueError:
@@ -29,6 +30,7 @@ def _parse_exif_date(value: str) -> datetime | None:
 
 
 def _extract_photo_metadata(path: Path) -> tuple[datetime | None, str | None, str | None]:
+    """Read EXIF tags from a photo file and return ``(date, make, model)``."""
     try:
         with open(path, "rb") as f:
             tags = exifread.process_file(f, details=False)
@@ -49,6 +51,7 @@ def _extract_photo_metadata(path: Path) -> tuple[datetime | None, str | None, st
 
 
 def _extract_video_metadata(path: Path) -> tuple[datetime | None, str | None, str | None]:
+    """Read container metadata from a video file and return ``(date, None, None)``."""
     try:
         parser = createParser(str(path))
         if not parser:
@@ -64,6 +67,15 @@ def _extract_video_metadata(path: Path) -> tuple[datetime | None, str | None, st
 
 
 def extract_metadata(path: Path) -> PhotoFile:
+    """Extract metadata from a photo or video file and return a ``PhotoFile``.
+
+    Args:
+        path: Path to the source file.
+
+    Returns:
+        A ``PhotoFile`` populated with date, camera, and extension fields.
+        ``has_metadata`` is ``True`` only when a date was successfully parsed.
+    """
     ext = path.suffix.lstrip(".").lower()
     if ext in VIDEO_EXTENSIONS:
         date_taken, camera_make, camera_model = _extract_video_metadata(path)
