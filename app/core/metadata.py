@@ -1,3 +1,5 @@
+import io
+import struct
 from datetime import datetime
 from pathlib import Path
 
@@ -32,8 +34,20 @@ def _parse_exif_date(value: str) -> datetime | None:
 def _extract_photo_metadata(path: Path) -> tuple[datetime | None, str | None, str | None]:
     """Read EXIF tags from a photo file and return ``(date, make, model)``."""
     try:
-        with open(path, "rb") as f:
-            tags = exifread.process_file(f, details=False)
+        if path.suffix.lstrip(".").lower() == "raf":
+            # RAF stores the embedded JPEG offset at bytes 84–87 (big-endian).
+            # exifread has no RAF parser; extract the JPEG into a BytesIO so that
+            # exifread's internal fh.seek(0) lands at the JPEG start, not the RAF header.
+            with open(path, "rb") as f:
+                f.seek(84)
+                jpeg_offset = struct.unpack(">I", f.read(4))[0]
+                f.seek(jpeg_offset)
+                jpeg_bytes = f.read()
+            fh = io.BytesIO(jpeg_bytes)
+            tags = exifread.process_file(fh, details=True)
+        else:
+            with open(path, "rb") as f:
+                tags = exifread.process_file(f, details=False)
 
         date_taken = None
         for key in _EXIF_DATE_KEYS:
@@ -61,6 +75,9 @@ def _extract_video_metadata(path: Path) -> tuple[datetime | None, str | None, st
         if metadata is None:
             return None, None, None
         date = metadata.get("creation_date")
+        # hachoir anchors the Mac epoch at 1904-01-01 UTC, so strip tzinfo.
+        if isinstance(date, datetime) and date.tzinfo is not None:
+            date = date.replace(tzinfo=None)
         return date, None, None
     except Exception:
         return None, None, None

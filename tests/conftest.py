@@ -8,8 +8,11 @@ date_only      – JPEG with DateTimeOriginal but no camera tags
 no_exif        – JPEG with no EXIF at all
 wrong_date_fmt – JPEG with a malformed date string
 png_no_exif    – PNG (no EXIF support in most encoders) — tests extension handling
+raf_with_exif  – Fujifilm RAF v2 with embedded JPEG EXIF
+mov_with_date  – Minimal QuickTime file with a Mac-epoch creation_time
 """
 
+import io
 import struct
 from datetime import datetime
 from pathlib import Path
@@ -87,6 +90,79 @@ def jpeg_wrong_date_fmt(tmp_path) -> Path:
 def png_no_exif(tmp_path) -> Path:
     """PNG file — no EXIF, tests extension handling."""
     return _make_png(tmp_path / "image.png")
+
+
+def _make_raf(path: Path, exif_dict: dict | None) -> Path:
+    """Build a minimal Fujifilm RAF v2 binary with an embedded JPEG."""
+    jpeg_buf = io.BytesIO()
+    img = Image.new("RGB", (1, 1), color=(100, 149, 237))
+    kwargs = {"exif": piexif.dump(exif_dict)} if exif_dict else {}
+    img.save(jpeg_buf, format="JPEG", **kwargs)
+    jpeg_data = jpeg_buf.getvalue()
+
+    jpeg_offset = 128
+    header = (
+        b"FUJIFILMCCD-RAW "          # 16  magic
+        + b"0200"                     #  4  version
+        + b"\x00" * 8                 #  8  camera model ID
+        + b"\x00" * 32                # 32  camera model string
+        + b"0100"                     #  4  directory version
+        + b"\x00" * 20                # 20  unknown
+        + struct.pack(">II",          #  8  JPEG offset + size
+                      jpeg_offset, len(jpeg_data))
+        + b"\x00" * 16                # 16  CFA fields (offset/size x 2)
+        + b"\x00" * 20                # 20  trailing padding
+    )                                 # = 128 bytes total
+    assert len(header) == 128
+    path.write_bytes(header + jpeg_data)
+    return path
+
+
+@pytest.fixture()
+def raf_with_exif(tmp_path) -> Path:
+    """Fujifilm RAF v2 file with DateTimeOriginal, Make, and Model."""
+    exif = _base_exif()
+    exif["Exif"][piexif.ExifIFD.DateTimeOriginal] = b"2022:09:10 07:15:00"
+    exif["0th"][piexif.ImageIFD.Make] = b"FUJIFILM"
+    exif["0th"][piexif.ImageIFD.Model] = b"X-T5"
+    return _make_raf(tmp_path / "test.raf", exif)
+
+
+def _make_mov(path: Path, mac_epoch_seconds: int) -> Path:
+    """Build a minimal QuickTime file (ftyp + moov/mvhd) with the given creation time."""
+    def atom(fourcc: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", 8 + len(data)) + fourcc + data
+
+    identity_matrix = struct.pack(
+        ">9i",
+        0x00010000, 0, 0,
+        0, 0x00010000, 0,
+        0, 0, 0x40000000,
+    )
+    mvhd_data = (
+        b"\x00\x00\x00\x00"
+        + struct.pack(">II", mac_epoch_seconds, mac_epoch_seconds)
+        + struct.pack(">II", 600, 0)
+        + struct.pack(">I", 0x00010000)
+        + struct.pack(">H", 0x0100)
+        + b"\x00" * 10
+        + identity_matrix
+        + b"\x00" * 24
+        + struct.pack(">I", 1)
+    )
+    ftyp = atom(b"ftyp", b"qt  " + struct.pack(">I", 0) + b"qt  ")
+    moov = atom(b"moov", atom(b"mvhd", mvhd_data))
+    path.write_bytes(ftyp + moov)
+    return path
+
+
+_MAC_1960 = 1_767_225_600  # 1960-01-01 00:00:00 UTC in Mac epoch seconds
+
+
+@pytest.fixture()
+def mov_with_date(tmp_path) -> Path:
+    """Minimal QuickTime MOV with a 1960-01-01 creation date."""
+    return _make_mov(tmp_path / "test.mov", _MAC_1960)
 
 
 # ---------------------------------------------------------------------------

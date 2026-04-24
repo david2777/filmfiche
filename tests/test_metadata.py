@@ -49,3 +49,20 @@ def test_extension_lowercase(jpeg_full_exif: Path):
 def test_resolved_dest_is_none(jpeg_full_exif: Path):
     result = extract_metadata(jpeg_full_exif)
     assert result.resolved_dest is None
+
+
+def test_raf_metadata(raf_with_exif: Path):
+    result = extract_metadata(raf_with_exif)
+    assert result.date_taken == datetime(2022, 9, 10, 7, 15, 0)
+    assert result.camera_make == "FUJIFILM"
+    assert result.camera_model == "X-T5"
+    assert result.has_metadata is True
+    assert result.extension == "raf"
+
+
+def test_mov_date(mov_with_date: Path):
+    result = extract_metadata(mov_with_date)
+    assert result.date_taken == datetime(1960, 1, 1, 0, 0, 0)
+    assert result.date_taken.tzinfo is None
+    assert result.has_metadata is True
+    assert result.extension == "mov"
