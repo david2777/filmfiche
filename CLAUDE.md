@@ -22,6 +22,11 @@ python -m pytest tests/test_metadata.py -v   # single test file
 
 Requires Python 3.14+.
 
+## Development Guidelines
+- **Write Tests**: Write unit tests for all core functionality.
+- **Write Docstrings**: Write succinct Google style docstrings for all public functions and classes.
+- **Update CLAUDE.md**: Update this file after each turn so that your memory is up to date.
+
 ## Architecture
 
 ```
@@ -100,7 +105,7 @@ Directory templates use tokens like `{year}`, `{month}`, `{day}`, `{camera}`, `{
 |---|---|---|
 | 1 | `app/models/photo_file.py`, `app/models/scan_result.py` | Done |
 | 2 | `app/core/metadata.py` | Done |
-| 3 | `app/core/template.py` | Pending |
+| 3 | `app/core/template.py` | Done |
 | 4 | `app/core/scanner.py` | Pending |
 | 5 | `app/core/mover.py` | Pending |
 | 6 | `app/gui/widgets/` | Pending |
