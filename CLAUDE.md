@@ -107,7 +107,7 @@ Directory templates use tokens like `{year}`, `{month}`, `{day}`, `{camera}`, `{
 | 2 | `app/core/metadata.py` | Done |
 | 3 | `app/core/template.py` | Done |
 | 4 | `app/core/scanner.py` | Done |
-| 5 | `app/core/mover.py` | Pending |
+| 5 | `app/core/mover.py` | Done |
 | 6 | `app/gui/widgets/` | Pending |
 | 7 | `app/gui/scan_tab.py`, `app/gui/move_tab.py` | Pending |
 | 8 | `app/gui/main_window.py` | Pending |
