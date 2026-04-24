@@ -9,15 +9,15 @@ Filmfiche is a PySide6 desktop app that scans a folder for photos and videos, ex
 ## Setup & Commands
 
 ```bash
-# Install dependencies (once requirements.txt exists)
-pip install PySide6 exifread Pillow pillow-heif hachoir
+# Install dependencies
+pip install PySide6 exifread Pillow pillow-heif hachoir piexif
 
 # Run the app
 python main.py
 
-# Run tests (once test suite exists)
+# Run tests
 python -m pytest
-python -m pytest tests/test_template.py   # single test file
+python -m pytest tests/test_metadata.py -v   # single test file
 ```
 
 Requires Python 3.14+.
@@ -94,6 +94,16 @@ Directory templates use tokens like `{year}`, `{month}`, `{day}`, `{camera}`, `{
 - **Copy with Suffix**: append `_1`, `_2`, … until name is free
 - **Override**: overwrite unconditionally
 
-## Implementation Order (from PLAN.md)
+## Implementation Status
 
-When building out: models → core/metadata → core/template → core/scanner → core/mover → gui/widgets → gui/scan_tab + move_tab → gui/main_window → main.py
+| Task | Module | Status |
+|---|---|---|
+| 1 | `app/models/photo_file.py`, `app/models/scan_result.py` | Done |
+| 2 | `app/core/metadata.py` | Done |
+| 3 | `app/core/template.py` | Pending |
+| 4 | `app/core/scanner.py` | Pending |
+| 5 | `app/core/mover.py` | Pending |
+| 6 | `app/gui/widgets/` | Pending |
+| 7 | `app/gui/scan_tab.py`, `app/gui/move_tab.py` | Pending |
+| 8 | `app/gui/main_window.py` | Pending |
+| 9 | `main.py` | Pending |
