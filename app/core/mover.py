@@ -22,7 +22,14 @@ class CollisionMode(Enum):
     OVERRIDE = "override"
 
 
-def _resolve_dest(photo: PhotoFile, output_dir: Path, template: str, source: Path) -> Path:
+def _resolve_dest(
+    photo: PhotoFile,
+    output_dir: Path,
+    template: str,
+    source: Path,
+    default_make: str = "",
+    default_model: str = "",
+) -> Path:
     """Compute the absolute destination path for a single photo.
 
     Args:
@@ -30,11 +37,13 @@ def _resolve_dest(photo: PhotoFile, output_dir: Path, template: str, source: Pat
         output_dir: Root destination directory.
         template: Directory template string.
         source: Original source root used to derive ``_unknown/`` sub-paths.
+        default_make: Fallback camera make when the file has none.
+        default_model: Fallback camera model when the file has none.
 
     Returns:
         Absolute destination path (not yet validated for collisions).
     """
-    rel_dir = resolve_path(template, photo)
+    rel_dir = resolve_path(template, photo, default_make, default_model)
     if rel_dir is None:
         return output_dir / "_unknown" / photo.source_path.relative_to(source)
     return output_dir / rel_dir / photo.source_path.name
@@ -77,6 +86,8 @@ def move_files(
     source: Path,
     copy: bool = True,
     progress_callback: Callable[[int, int], None] | None = None,
+    default_make: str = "",
+    default_model: str = "",
 ) -> MoveResult:
     """Copy or move a list of PhotoFiles to an output directory.
 
@@ -88,6 +99,8 @@ def move_files(
         source: Original source root used to compute ``_unknown/`` relative paths.
         copy: If ``True``, copy files (preserve source). If ``False``, move them.
         progress_callback: Optional ``(current, total)`` callable for QThread signals.
+        default_make: Fallback camera make for files without camera metadata.
+        default_model: Fallback camera model for files without camera metadata.
 
     Returns:
         MoveResult with counts and per-file log messages.
@@ -99,7 +112,7 @@ def move_files(
     for i, photo in enumerate(files, 1):
         name = photo.source_path.name
         try:
-            raw_dest = _resolve_dest(photo, output_dir, template, source)
+            raw_dest = _resolve_dest(photo, output_dir, template, source, default_make, default_model)
             dest = _apply_collision(raw_dest, collision_mode)
             if dest is None:
                 result.log.append(f"SKIP {name}")

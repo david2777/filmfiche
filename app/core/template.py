@@ -56,16 +56,15 @@ def _normalize(value: str | None, fallback: str = "unknown_camera") -> str:
     return value.strip().replace(" ", "_")
 
 
-def _build_tokens(photo: PhotoFile) -> dict[str, str]:
+def _build_tokens(
+    photo: PhotoFile, default_make: str = "", default_model: str = ""
+) -> dict[str, str]:
     dt = photo.date_taken
-    make = _normalize(photo.camera_make)
-    model = _normalize(photo.camera_model)
-
-    if photo.camera_make and photo.camera_model:
-        camera = f"{make}_{model}".replace(" ", "_")
-    else:
-        raw = photo.camera_make or photo.camera_model or None
-        camera = _normalize(raw)
+    eff_make = photo.camera_make or default_make or None
+    eff_model = photo.camera_model or default_model or None
+    make = _normalize(eff_make)
+    model = _normalize(eff_model)
+    camera = f"{make}_{model}" if (eff_make and eff_model) else _normalize(eff_make or eff_model)
 
     return {
         "year": dt.strftime("%Y"),
@@ -116,12 +115,16 @@ def render_preview(template: str) -> str:
         return ""
 
 
-def resolve_path(template: str, photo: PhotoFile) -> Path | None:
+def resolve_path(
+    template: str, photo: PhotoFile, default_make: str = "", default_model: str = ""
+) -> Path | None:
     """Resolve a template to a relative output path for a given photo.
 
     Args:
         template: A directory template string.
         photo: The ``PhotoFile`` whose metadata supplies token values.
+        default_make: Fallback camera make when the file has none.
+        default_model: Fallback camera model when the file has none.
 
     Returns:
         A relative ``Path`` with tokens substituted, or ``None`` when
@@ -129,5 +132,5 @@ def resolve_path(template: str, photo: PhotoFile) -> Path | None:
     """
     if photo.date_taken is None:
         return None
-    tokens = _build_tokens(photo)
+    tokens = _build_tokens(photo, default_make, default_model)
     return Path(template.format_map(tokens))

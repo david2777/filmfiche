@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QRadioButton,
     QTextEdit,
@@ -46,6 +47,8 @@ class MoveWorker(QThread):
         collision_mode: CollisionMode,
         source: Path,
         copy: bool = True,
+        default_make: str = "",
+        default_model: str = "",
         parent=None,
     ):
         """Initialise the worker.
@@ -57,6 +60,8 @@ class MoveWorker(QThread):
             collision_mode: How to handle pre-existing destination files.
             source: Original source root for ``_unknown/`` sub-paths.
             copy: ``True`` to copy (preserve source), ``False`` to move.
+            default_make: Fallback camera make for files without camera metadata.
+            default_model: Fallback camera model for files without camera metadata.
             parent: Optional parent QObject.
         """
         super().__init__(parent)
@@ -66,6 +71,8 @@ class MoveWorker(QThread):
         self._collision_mode = collision_mode
         self._source = source
         self._copy = copy
+        self._default_make = default_make
+        self._default_model = default_model
 
     def run(self) -> None:
         """Execute the move/copy synchronously and emit results."""
@@ -78,6 +85,8 @@ class MoveWorker(QThread):
                 self._source,
                 self._copy,
                 progress_callback=lambda c, t: self.progress.emit(c, t),
+                default_make=self._default_make,
+                default_model=self._default_model,
             )
             self.finished.emit(result)
         except Exception as e:
@@ -144,10 +153,23 @@ class MoveTab(QWidget):
         template_options_row.addWidget(self._template_editor, stretch=1)
         template_options_row.addLayout(options_layout)
 
+        self._default_make_edit = QLineEdit()
+        self._default_make_edit.setPlaceholderText("Default make")
+        self._default_model_edit = QLineEdit()
+        self._default_model_edit.setPlaceholderText("Default model")
+
+        camera_fallback_row = QHBoxLayout()
+        camera_fallback_row.addWidget(QLabel("Default Make:"))
+        camera_fallback_row.addWidget(self._default_make_edit, stretch=1)
+        camera_fallback_row.addSpacing(12)
+        camera_fallback_row.addWidget(QLabel("Default Model:"))
+        camera_fallback_row.addWidget(self._default_model_edit, stretch=1)
+
         output_group = QGroupBox("Output")
         output_layout = QVBoxLayout(output_group)
         output_layout.addWidget(self._dir_picker)
         output_layout.addLayout(template_options_row)
+        output_layout.addLayout(camera_fallback_row)
 
         self._filter_panel = FilterPanel()
         filters_group = QGroupBox("Filters")
@@ -182,6 +204,8 @@ class MoveTab(QWidget):
         self._skip_radio.toggled.connect(self._save_settings)
         self._suffix_radio.toggled.connect(self._save_settings)
         self._override_radio.toggled.connect(self._save_settings)
+        self._default_make_edit.textChanged.connect(self._save_settings)
+        self._default_model_edit.textChanged.connect(self._save_settings)
         self._move_btn.clicked.connect(self._on_move_clicked)
 
         self._load_settings()
@@ -231,6 +255,8 @@ class MoveTab(QWidget):
             self._suffix_radio.setChecked(collision == "suffix")
             self._override_radio.setChecked(collision == "override")
             self._skip_radio.setChecked(collision not in ("suffix", "override"))
+            self._default_make_edit.setText(s.value("output/default_make", ""))
+            self._default_model_edit.setText(s.value("output/default_model", ""))
         finally:
             self._loading = False
         self._update_move_btn()
@@ -251,6 +277,8 @@ class MoveTab(QWidget):
             s.setValue("output/collision", "override")
         else:
             s.setValue("output/collision", "skip")
+        s.setValue("output/default_make", self._default_make_edit.text())
+        s.setValue("output/default_model", self._default_model_edit.text())
 
     def _collision_mode(self) -> CollisionMode:
         if self._suffix_radio.isChecked():
@@ -294,6 +322,8 @@ class MoveTab(QWidget):
             self._collision_mode(),
             self._source,
             self._copy_radio.isChecked(),
+            default_make=self._default_make_edit.text().strip(),
+            default_model=self._default_model_edit.text().strip(),
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
