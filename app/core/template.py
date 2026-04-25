@@ -13,9 +13,11 @@ KNOWN_TOKENS = frozenset({
 PRESETS = [
     "{year}/{month}/{day}",
     "{year}/{month}",
-    "{camera}/{year}/{month}",
-    "{camera}/{year}-{month}",
     "{year}/{month_name}",
+    "{camera_model}/{year}/{month}",
+    "{camera_model}/{year}/{year}_{month}",
+    "{camera_make}/{camera_model}/{year}/{month}",
+    "{camera}/{year}{month}",
 ]
 
 _DATE_TOKENS = frozenset({"year", "month", "day", "month_name"})
@@ -25,7 +27,7 @@ _TOKEN_RE = re.compile(r"\{(\w+)\}")
 _SAMPLE = {
     "year": "2024", "month": "03", "day": "07",
     "month_name": "March",
-    "camera": "Canon_EOS_R5", "camera_make": "Canon", "camera_model": "EOS_R5",
+    "camera": "FUJIFILM_X-S20", "camera_make": "FUJIFILM", "camera_model": "X-S20",
     "ext": "jpg",
 }
 
