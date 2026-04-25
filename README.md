@@ -2,6 +2,8 @@
 
 A simple desktop app for organizing photos and videos by date and camera metadata. Filmfiche scans a source folder, reads EXIF and video container metadata, and copies or moves files into a structured output directory based on a user-defined template.
 
+![Image](docs/screenshot.png "Image")
+
 ## Features
 
 - Recursive scan of source directories for photos and videos
@@ -12,7 +14,15 @@ A simple desktop app for organizing photos and videos by date and camera metadat
 - Filter by file extension and camera before copying
 - Copy or Move mode
 - Collision handling: Skip, Add Suffix, or Overwrite
-- Files without a usable date go to `_unknown/` preserving their relative subpath
+- Files without a usable date use the modified date (but warn the user on scan and copy)
+- Default Make / Default Model fallbacks for files with no camera metadata
+
+## Tested
+- Windows 11
+- .jpeg and .raf from Fujifilm X-S20
+
+## Known Not Working
+- .mov (at least from a Fujifilm X-S20)
 
 ## Requirements
 
