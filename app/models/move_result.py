@@ -15,4 +15,5 @@ class MoveResult:
     moved: int = 0
     skipped: int = 0
     errors: int = 0
+    mtime_used: int = 0
     log: list[str] = field(default_factory=list)

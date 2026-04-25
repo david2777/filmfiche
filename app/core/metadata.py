@@ -98,6 +98,9 @@ def extract_metadata(path: Path) -> PhotoFile:
         date_taken, camera_make, camera_model = _extract_video_metadata(path)
     else:
         date_taken, camera_make, camera_model = _extract_photo_metadata(path)
+    has_metadata = date_taken is not None
+    if date_taken is None:
+        date_taken = datetime.fromtimestamp(path.stat().st_mtime)
     return PhotoFile(
         source_path=path,
         extension=ext,
@@ -105,5 +108,5 @@ def extract_metadata(path: Path) -> PhotoFile:
         camera_make=camera_make,
         camera_model=camera_model,
         resolved_dest=None,
-        has_metadata=date_taken is not None,
+        has_metadata=has_metadata,
     )

@@ -71,14 +71,16 @@ def test_move_move_removes_source(sample_source_dir, tmp_path):
         assert not f.exists(), f"Source file still exists after move: {f}"
 
 
-def test_move_undated_files_go_to_unknown(sample_source_dir, tmp_path):
+def test_move_mtime_fallback_files_not_in_unknown(sample_source_dir, tmp_path):
     output_dir = tmp_path / "output"
     scan = scan_directory(sample_source_dir)
-    move_files(scan.files, output_dir, TEMPLATE, CollisionMode.SKIP, sample_source_dir)
-    unknown_dir = output_dir / "_unknown"
-    unknown_files = _collect_output_files(unknown_dir)
-    # no_exif.jpg, wrong_date.jpg, image.png — 3 undated files
-    assert len(unknown_files) == 3
+    result = move_files(scan.files, output_dir, TEMPLATE, CollisionMode.SKIP, sample_source_dir)
+    # no_exif.jpg, wrong_date.jpg, image.png — 3 files use mtime fallback
+    assert result.mtime_used == 3
+    mtime_log_entries = [line for line in result.log if "[mtime]" in line]
+    assert len(mtime_log_entries) == 3
+    # None go to _unknown/ — mtime fallback routes them to dated dirs
+    assert not (output_dir / "_unknown").exists()
 
 
 def test_move_dated_files_not_in_unknown(sample_source_dir, tmp_path):

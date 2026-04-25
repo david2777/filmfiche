@@ -24,19 +24,19 @@ def test_date_only(jpeg_date_only: Path):
 
 def test_no_exif(jpeg_no_exif: Path):
     result = extract_metadata(jpeg_no_exif)
-    assert result.date_taken is None
+    assert result.date_taken is not None  # mtime fallback
     assert result.has_metadata is False
 
 
 def test_wrong_date_fmt(jpeg_wrong_date_fmt: Path):
     result = extract_metadata(jpeg_wrong_date_fmt)
-    assert result.date_taken is None
+    assert result.date_taken is not None  # mtime fallback
     assert result.has_metadata is False
 
 
 def test_png_no_exif(png_no_exif: Path):
     result = extract_metadata(png_no_exif)
-    assert result.date_taken is None
+    assert result.date_taken is not None  # mtime fallback
     assert result.extension == "png"
     assert result.has_metadata is False
 

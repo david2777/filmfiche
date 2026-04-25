@@ -127,11 +127,11 @@ class ScanTab(QWidget):
 
     def _on_finished(self, result: ScanResult) -> None:
         self._scan_btn.setEnabled(True)
-        no_date = sum(1 for f in result.files if f.date_taken is None)
+        no_date = sum(1 for f in result.files if not f.has_metadata)
         total = len(result.files)
         self.scan_status.emit(
             f"{total} file(s) found"
-            + (f" ({no_date} without date)" if no_date else "")
+            + (f" ({no_date} using mtime)" if no_date else "")
         )
         self.scan_complete.emit(self.source_path, result)
 

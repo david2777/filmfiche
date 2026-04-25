@@ -335,9 +335,10 @@ class MoveTab(QWidget):
 
     def _on_finished(self, result: MoveResult) -> None:
         self._update_move_btn()
-        self.move_status.emit(
-            f"Moved: {result.moved}  Skipped: {result.skipped}  Errors: {result.errors}"
-        )
+        status = f"Moved: {result.moved}  Skipped: {result.skipped}  Errors: {result.errors}"
+        if result.mtime_used:
+            status += f"  ({result.mtime_used} using mtime)"
+        self.move_status.emit(status)
         for line in result.log:
             self._log_edit.append(line)
 

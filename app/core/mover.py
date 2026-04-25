@@ -124,7 +124,10 @@ def move_files(
                 else:
                     shutil.move(str(photo.source_path), dest)
                 photo.resolved_dest = dest
-                result.log.append(f"{verb} {name} → {dest}")
+                mtime_tag = " [mtime]" if not photo.has_metadata else ""
+                result.log.append(f"{verb} {name} → {dest}{mtime_tag}")
+                if not photo.has_metadata:
+                    result.mtime_used += 1
                 result.moved += 1
         except Exception as e:
             result.log.append(f"ERROR {name}: {e}")
