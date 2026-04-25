@@ -76,7 +76,7 @@ def test_preview_date():
 
 
 def test_preview_camera():
-    assert render_preview("{camera}/{year}") == "Canon_EOS_R5/2024"
+    assert render_preview("{camera}/{year}") == "FUJIFILM_X-S20/2024"
 
 
 def test_preview_month_name():
