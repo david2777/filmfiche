@@ -163,6 +163,7 @@ class MoveTab(QWidget):
         self._scan_result: ScanResult | None = None
         self._source: Path | None = None
         self._worker: MoveWorker | None = None
+        self._loading = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -214,23 +215,30 @@ class MoveTab(QWidget):
 
     def _load_settings(self) -> None:
         """Restore persisted output settings from QSettings."""
-        s = QSettings()
-        path = s.value("output/path", "")
-        if path:
-            self._dir_picker.set_directory(Path(path))
-        template = s.value("output/template", "")
-        if template:
-            self._template_editor._line_edit.setText(template)
-        mode = s.value("output/mode", "copy")
-        self._copy_radio.setChecked(mode == "copy")
-        self._move_radio.setChecked(mode == "move")
-        collision = s.value("output/collision", "skip")
-        self._suffix_radio.setChecked(collision == "suffix")
-        self._override_radio.setChecked(collision == "override")
-        self._skip_radio.setChecked(collision not in ("suffix", "override"))
+        self._loading = True
+        try:
+            s = QSettings()
+            path = s.value("output/path", "")
+            if path:
+                self._dir_picker.set_directory(Path(path))
+            template = s.value("output/template", "")
+            if template:
+                self._template_editor._line_edit.setText(template)
+            mode = s.value("output/mode", "copy")
+            self._copy_radio.setChecked(mode == "copy")
+            self._move_radio.setChecked(mode == "move")
+            collision = s.value("output/collision", "skip")
+            self._suffix_radio.setChecked(collision == "suffix")
+            self._override_radio.setChecked(collision == "override")
+            self._skip_radio.setChecked(collision not in ("suffix", "override"))
+        finally:
+            self._loading = False
+        self._update_move_btn()
 
     def _save_settings(self) -> None:
         """Persist current output settings to QSettings."""
+        if self._loading:
+            return
         s = QSettings()
         path = self._dir_picker.path
         if path:
