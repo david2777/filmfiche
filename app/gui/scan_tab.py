@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (
     QGroupBox,
     QPushButton,
@@ -83,7 +83,20 @@ class ScanTab(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(source_group)
 
+        self._dir_picker.path_changed.connect(self._save_settings)
         self._scan_btn.clicked.connect(self._on_scan_clicked)
+
+        self._load_settings()
+
+    def _load_settings(self) -> None:
+        path = QSettings().value("source/path", "")
+        if path:
+            self._dir_picker.set_directory(Path(path))
+
+    def _save_settings(self) -> None:
+        path = self._dir_picker.path
+        if path:
+            QSettings().setValue("source/path", str(path))
 
     @property
     def source_path(self) -> Path | None:
