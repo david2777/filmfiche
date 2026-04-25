@@ -79,9 +79,11 @@ def test_template_editor_invalid_token(qapp):
     assert editor._status_label.text()  # non-empty error message
 
 
-def test_template_editor_preset_selection(qapp):
+def test_template_editor_preset_context_menu(qapp):
+    from PySide6.QtCore import Qt
     editor = TemplateEditor()
-    editor._preset_combo.setCurrentIndex(2)
+    assert editor._line_edit.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu
+    editor._line_edit.setText(PRESETS[2])
     assert editor._line_edit.text() == PRESETS[2]
 
 

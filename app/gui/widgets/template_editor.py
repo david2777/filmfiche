@@ -1,11 +1,11 @@
 """Template editor widget with presets, live preview, and validation."""
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox,
-    QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -33,21 +33,22 @@ class TemplateEditor(QWidget):
         """
         super().__init__(parent)
 
-        self._preset_combo = QComboBox()
-        self._preset_combo.addItems(PRESETS)
-        self._preset_combo.addItem("(custom)")
-
         self._line_edit = QLineEdit()
+        self._line_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._preview_label = QLabel()
         self._status_label = QLabel()
 
-        layout = QFormLayout(self)
-        layout.addRow("Preset:", self._preset_combo)
-        layout.addRow("Template:", self._line_edit)
-        layout.addRow("Preview:", self._preview_label)
-        layout.addRow("Status:", self._status_label)
+        template_row = QHBoxLayout()
+        template_row.addWidget(QLabel("Template:"))
+        template_row.addWidget(self._line_edit, stretch=1)
+        template_row.addWidget(self._status_label)
 
-        self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(template_row)
+        layout.addWidget(self._preview_label)
+
+        self._line_edit.customContextMenuRequested.connect(self._show_preset_menu)
         self._line_edit.textChanged.connect(self._on_text_changed)
 
         # Seed the line edit with the first preset (triggers _on_text_changed).
@@ -63,9 +64,12 @@ class TemplateEditor(QWidget):
         """``True`` when :func:`validate_template` reports no errors."""
         return validate_template(self._line_edit.text()).is_valid
 
-    def _on_preset_selected(self, index: int) -> None:
-        if index < len(PRESETS):
-            self._line_edit.setText(PRESETS[index])
+    def _show_preset_menu(self, pos) -> None:
+        menu = self._line_edit.createStandardContextMenu()
+        menu.addSeparator()
+        for preset in PRESETS:
+            menu.addAction(preset, lambda p=preset: self._line_edit.setText(p))
+        menu.exec(self._line_edit.mapToGlobal(pos))
 
     def _on_text_changed(self, text: str) -> None:
         result = validate_template(text)

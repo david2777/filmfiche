@@ -2,15 +2,14 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QFormLayout,
+    QButtonGroup,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QProgressBar,
     QPushButton,
+    QRadioButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -85,14 +84,14 @@ class MoveWorker(QThread):
             self.error.emit(str(e))
 
 
-_COLLISION_MODES = [CollisionMode.SKIP, CollisionMode.SUFFIX, CollisionMode.OVERRIDE]
-
-
 class MoveTab(QWidget):
     """Step 2 tab: configure and execute a copy or move operation.
 
     Disabled until :meth:`load_scan_result` is called with a completed scan.
     """
+
+    move_progress = Signal(int, int)
+    move_status = Signal(str)
 
     def __init__(self, parent=None):
         """Initialise the move tab layout and widgets.
@@ -105,27 +104,59 @@ class MoveTab(QWidget):
         self._dir_picker = DirPicker("Output:")
         self._template_editor = TemplateEditor()
 
-        collision_row = QWidget()
-        collision_layout = QHBoxLayout(collision_row)
-        collision_layout.setContentsMargins(0, 0, 0, 0)
-        self._collision_combo = QComboBox()
-        self._collision_combo.addItems(["Skip", "Add suffix", "Overwrite"])
-        self._copy_check = QCheckBox("Copy files (uncheck to move)")
-        self._copy_check.setChecked(True)
-        collision_layout.addWidget(QLabel("Collision:"))
-        collision_layout.addWidget(self._collision_combo)
-        collision_layout.addSpacing(16)
-        collision_layout.addWidget(self._copy_check)
-        collision_layout.addStretch()
+        # Mode radio buttons (Copy / Move)
+        self._copy_radio = QRadioButton("Copy")
+        self._move_radio = QRadioButton("Move")
+        self._copy_radio.setChecked(True)
+        mode_group = QButtonGroup(self)
+        mode_group.addButton(self._copy_radio)
+        mode_group.addButton(self._move_radio)
+
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Mode"))
+        mode_row.addWidget(self._copy_radio)
+        mode_row.addWidget(self._move_radio)
+        mode_row.addStretch()
+
+        # Collision radio buttons (Skip / Add Suffix / Overwrite)
+        self._skip_radio = QRadioButton("Skip")
+        self._suffix_radio = QRadioButton("Add Suffix")
+        self._override_radio = QRadioButton("Overwrite")
+        self._skip_radio.setChecked(True)
+        collision_group = QButtonGroup(self)
+        collision_group.addButton(self._skip_radio)
+        collision_group.addButton(self._suffix_radio)
+        collision_group.addButton(self._override_radio)
+
+        collision_row = QHBoxLayout()
+        collision_row.addWidget(QLabel("Collision"))
+        collision_row.addWidget(self._skip_radio)
+        collision_row.addWidget(self._suffix_radio)
+        collision_row.addWidget(self._override_radio)
+        collision_row.addStretch()
+
+        options_layout = QVBoxLayout()
+        options_layout.addLayout(mode_row)
+        options_layout.addLayout(collision_row)
+        options_layout.addStretch()
+
+        template_options_row = QHBoxLayout()
+        template_options_row.addWidget(self._template_editor, stretch=1)
+        template_options_row.addLayout(options_layout)
+
+        output_group = QGroupBox("Output")
+        output_layout = QVBoxLayout(output_group)
+        output_layout.addWidget(self._dir_picker)
+        output_layout.addLayout(template_options_row)
 
         self._filter_panel = FilterPanel()
+        filters_group = QGroupBox("Filters")
+        filters_layout = QVBoxLayout(filters_group)
+        filters_layout.addWidget(self._filter_panel)
 
         self._move_btn = QPushButton("Copy")
         self._move_btn.setEnabled(False)
 
-        self._progress_bar = QProgressBar()
-        self._progress_bar.setValue(0)
-        self._summary_label = QLabel("")
         self._log_edit = QTextEdit()
         self._log_edit.setReadOnly(True)
 
@@ -134,40 +165,91 @@ class MoveTab(QWidget):
         self._worker: MoveWorker | None = None
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self._dir_picker)
-        layout.addWidget(self._template_editor)
-        layout.addWidget(collision_row)
-        layout.addWidget(self._filter_panel)
-        layout.addWidget(self._move_btn)
-        layout.addWidget(self._progress_bar)
-        layout.addWidget(self._summary_label)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(output_group)
+        layout.addWidget(filters_group)
         layout.addWidget(self._log_edit, stretch=1)
+        layout.addWidget(self._move_btn)
 
-        self._copy_check.toggled.connect(self._on_copy_toggled)
+        self.setEnabled(False)
+
+        self._dir_picker.path_changed.connect(self._update_move_btn)
+        self._dir_picker.path_changed.connect(self._save_settings)
+        self._template_editor.template_changed.connect(self._save_settings)
+        self._copy_radio.toggled.connect(self._on_copy_toggled)
+        self._copy_radio.toggled.connect(self._save_settings)
+        self._skip_radio.toggled.connect(self._save_settings)
+        self._suffix_radio.toggled.connect(self._save_settings)
+        self._override_radio.toggled.connect(self._save_settings)
         self._move_btn.clicked.connect(self._on_move_clicked)
+
+        self._load_settings()
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def load_scan_result(self, source: Path, result: ScanResult) -> None:
-        """Populate the filter panel and enable the move button.
+        """Populate the filter panel and enable the move section.
 
         Args:
             source: The directory that was scanned.
             result: The completed scan result.
         """
+        self.setEnabled(True)
         self._source = source
         self._scan_result = result
         self._filter_panel.populate(result)
-        self._move_btn.setEnabled(True)
+        self._update_move_btn()
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
+    def _update_move_btn(self) -> None:
+        """Enable the action button only when both scan and output path are set."""
+        self._move_btn.setEnabled(
+            self._scan_result is not None and self._dir_picker.path is not None
+        )
+
+    def _load_settings(self) -> None:
+        """Restore persisted output settings from QSettings."""
+        s = QSettings()
+        path = s.value("output/path", "")
+        if path:
+            self._dir_picker.set_directory(Path(path))
+        template = s.value("output/template", "")
+        if template:
+            self._template_editor._line_edit.setText(template)
+        mode = s.value("output/mode", "copy")
+        self._copy_radio.setChecked(mode == "copy")
+        self._move_radio.setChecked(mode == "move")
+        collision = s.value("output/collision", "skip")
+        self._suffix_radio.setChecked(collision == "suffix")
+        self._override_radio.setChecked(collision == "override")
+        self._skip_radio.setChecked(collision not in ("suffix", "override"))
+
+    def _save_settings(self) -> None:
+        """Persist current output settings to QSettings."""
+        s = QSettings()
+        path = self._dir_picker.path
+        if path:
+            s.setValue("output/path", str(path))
+        s.setValue("output/template", self._template_editor.template)
+        s.setValue("output/mode", "copy" if self._copy_radio.isChecked() else "move")
+        if self._suffix_radio.isChecked():
+            s.setValue("output/collision", "suffix")
+        elif self._override_radio.isChecked():
+            s.setValue("output/collision", "override")
+        else:
+            s.setValue("output/collision", "skip")
+
     def _collision_mode(self) -> CollisionMode:
-        return _COLLISION_MODES[self._collision_combo.currentIndex()]
+        if self._suffix_radio.isChecked():
+            return CollisionMode.SUFFIX
+        if self._override_radio.isChecked():
+            return CollisionMode.OVERRIDE
+        return CollisionMode.SKIP
 
     # ------------------------------------------------------------------
     # Slots
@@ -178,9 +260,6 @@ class MoveTab(QWidget):
 
     def _on_move_clicked(self) -> None:
         output_dir = self._dir_picker.path
-        if output_dir is None:
-            self._log_edit.append("Please select an output directory.")
-            return
         if not self._template_editor.is_valid:
             self._log_edit.append("Template is invalid. Fix it before proceeding.")
             return
@@ -197,7 +276,7 @@ class MoveTab(QWidget):
         ]
 
         self._move_btn.setEnabled(False)
-        self._progress_bar.setValue(0)
+        self.move_progress.emit(0, 0)
         self._log_edit.clear()
 
         self._worker = MoveWorker(
@@ -206,7 +285,7 @@ class MoveTab(QWidget):
             self._template_editor.template,
             self._collision_mode(),
             self._source,
-            self._copy_check.isChecked(),
+            self._copy_radio.isChecked(),
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
@@ -214,17 +293,17 @@ class MoveTab(QWidget):
         self._worker.start()
 
     def _on_progress(self, current: int, total: int) -> None:
-        self._progress_bar.setMaximum(total)
-        self._progress_bar.setValue(current)
+        self.move_progress.emit(current, total)
 
     def _on_finished(self, result: MoveResult) -> None:
-        self._move_btn.setEnabled(True)
-        self._summary_label.setText(
+        self._update_move_btn()
+        self.move_status.emit(
             f"Moved: {result.moved}  Skipped: {result.skipped}  Errors: {result.errors}"
         )
         for line in result.log:
             self._log_edit.append(line)
 
     def _on_error(self, msg: str) -> None:
-        self._move_btn.setEnabled(True)
+        self._update_move_btn()
+        self.move_status.emit(f"Error: {msg}")
         self._log_edit.append(f"Error: {msg}")

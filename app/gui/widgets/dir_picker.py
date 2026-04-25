@@ -56,7 +56,7 @@ class DirPicker(QWidget):
         Args:
             path: The directory path to display.
         """
-        self._line_edit.setText(str(path))
+        self._line_edit.setText(path.as_posix())
         self.path_changed.emit(path)
 
     def _on_browse(self):

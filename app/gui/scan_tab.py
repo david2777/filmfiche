@@ -1,17 +1,14 @@
-"""Step 1 UI tab: source directory picker, Scan button, progress, and summary."""
+"""Step 1 UI: source directory picker and Scan button."""
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout,
-    QLabel,
-    QProgressBar,
+    QGroupBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import QThread
 
 from app.core.scanner import scan_directory
 from app.gui.widgets.dir_picker import DirPicker
@@ -62,6 +59,8 @@ class ScanTab(QWidget):
     """
 
     scan_complete = Signal(Path, object)
+    scan_progress = Signal(int, int)
+    scan_status = Signal(str)
 
     def __init__(self, parent=None):
         """Initialise the scan tab layout and widgets.
@@ -73,21 +72,16 @@ class ScanTab(QWidget):
 
         self._dir_picker = DirPicker("Source:")
         self._scan_btn = QPushButton("Scan")
-        self._progress_bar = QProgressBar()
-        self._progress_bar.setValue(0)
-        self._status_label = QLabel("Ready.")
         self._worker: ScanWorker | None = None
 
-        btn_row = QHBoxLayout()
-        btn_row.addWidget(self._scan_btn)
-        btn_row.addStretch()
+        source_group = QGroupBox("Source")
+        group_layout = QVBoxLayout(source_group)
+        group_layout.addWidget(self._dir_picker)
+        group_layout.addWidget(self._scan_btn)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self._dir_picker)
-        layout.addLayout(btn_row)
-        layout.addWidget(self._progress_bar)
-        layout.addWidget(self._status_label)
-        layout.addStretch()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(source_group)
 
         self._scan_btn.clicked.connect(self._on_scan_clicked)
 
@@ -102,11 +96,11 @@ class ScanTab(QWidget):
 
     def _on_scan_clicked(self) -> None:
         if self.source_path is None:
-            self._status_label.setText("Please select a source directory first.")
+            self.scan_status.emit("Please select a source directory first.")
             return
         self._scan_btn.setEnabled(False)
-        self._progress_bar.setValue(0)
-        self._status_label.setText("Scanning…")
+        self.scan_progress.emit(0, 0)
+        self.scan_status.emit("Scanning…")
 
         self._worker = ScanWorker(self.source_path)
         self._worker.progress.connect(self._on_progress)
@@ -115,15 +109,14 @@ class ScanTab(QWidget):
         self._worker.start()
 
     def _on_progress(self, current: int, total: int) -> None:
-        self._progress_bar.setMaximum(total)
-        self._progress_bar.setValue(current)
-        self._status_label.setText(f"Scanning… {current}/{total}")
+        self.scan_progress.emit(current, total)
+        self.scan_status.emit(f"Scanning… {current}/{total}")
 
     def _on_finished(self, result: ScanResult) -> None:
         self._scan_btn.setEnabled(True)
         no_date = sum(1 for f in result.files if f.date_taken is None)
         total = len(result.files)
-        self._status_label.setText(
+        self.scan_status.emit(
             f"{total} file(s) found"
             + (f" ({no_date} without date)" if no_date else "")
         )
@@ -131,4 +124,4 @@ class ScanTab(QWidget):
 
     def _on_error(self, msg: str) -> None:
         self._scan_btn.setEnabled(True)
-        self._status_label.setText(f"Error: {msg}")
+        self.scan_status.emit(f"Error: {msg}")
