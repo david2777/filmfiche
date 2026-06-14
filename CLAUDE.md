@@ -48,14 +48,33 @@ filmfiche/
         └── widgets/
             ├── dir_picker.py
             ├── template_editor.py
-            └── filter_panel.py
+            ├── filter_panel.py
+            └── file_table.py      # Scan-results table (model/view) + selection
 ```
 
 ### Key Data Flow
 
 1. **Scan Tab** → `scanner.py` walks the source directory, calling `metadata.py` per file → produces `ScanResult` (list of `PhotoFile` objects).
-2. **Move Tab** → user picks output dir + template + collision mode → `mover.py` resolves `PhotoFile.resolved_dest` via `template.py`, then copies/moves.
+2. **Move Tab** → the scan result is shown in the `file_table.py` results table (one row per file: name, date, camera, live output-path preview, plus a selection checkbox). The user picks output dir + template + collision mode → `mover.py` resolves `PhotoFile.resolved_dest` via `template.py`, then copies/moves the **checked, filter-visible** files.
 3. Files without a usable date go to `<output_dir>/_unknown/<original_relative_subpath>/`.
+
+### Scan-Results Table (`file_table.py`)
+
+Built on Qt's model/view framework (not item widgets) to stay responsive with
+thousands of files — only visible rows are painted.
+
+- `FileTableModel` — wraps `list[PhotoFile]` + a parallel `list[bool]` checked
+  state. Columns: Name (with checkbox), Date, Camera, Output Path. The Output
+  Path column is computed on demand via a resolver callback set by `MoveTab`
+  (`mover.resolve_dest`, collision-free); after a move it reflects each file's
+  actual `resolved_dest`.
+- `FileFilterProxyModel` — hides rows by extension/camera using the sets from
+  `FilterPanel`; leaves the underlying list untouched.
+- `FileTableView` — table + Select All/None (over visible rows) + a live count
+  label. `checked_visible_files()` returns what a move acts on.
+
+`MoveTab` no longer has a per-file log `QTextEdit`; move outcomes are summarised
+in the status line and the table's Output Path column.
 
 ### PhotoFile Dataclass
 
@@ -77,7 +96,6 @@ Both scan and move operations run in a `QThread` subclass. Signals used:
 
 ```python
 progress = Signal(int, int)   # current, total
-file_done = Signal(str)       # log message per file
 finished = Signal(object)     # ScanResult or MoveResult
 error = Signal(str)
 ```

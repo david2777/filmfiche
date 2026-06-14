@@ -49,6 +49,34 @@ def _resolve_dest(
     return output_dir / rel_dir / photo.source_path.name
 
 
+def resolve_dest(
+    photo: PhotoFile,
+    output_dir: Path,
+    template: str,
+    source: Path,
+    default_make: str = "",
+    default_model: str = "",
+) -> Path:
+    """Compute a photo's destination path without resolving collisions.
+
+    Public wrapper around :func:`_resolve_dest` intended for UI previews, where
+    the proposed output path is shown but no file is written. Collision handling
+    (which touches the filesystem) is deliberately skipped.
+
+    Args:
+        photo: The source file with extracted metadata.
+        output_dir: Root destination directory.
+        template: Directory template string.
+        source: Original source root used to derive ``_unknown/`` sub-paths.
+        default_make: Fallback camera make when the file has none.
+        default_model: Fallback camera model when the file has none.
+
+    Returns:
+        Absolute destination path (not yet validated for collisions).
+    """
+    return _resolve_dest(photo, output_dir, template, source, default_make, default_model)
+
+
 def _apply_collision(dest: Path, mode: CollisionMode) -> Path | None:
     """Resolve a potential collision at *dest* according to *mode*.
 

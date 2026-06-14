@@ -11,14 +11,13 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QRadioButton,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from app.core.mover import CollisionMode, move_files
-from app.core.scanner import _camera_key
+from app.core.mover import CollisionMode, move_files, resolve_dest
 from app.gui.widgets.dir_picker import DirPicker
+from app.gui.widgets.file_table import FileTableView
 from app.gui.widgets.filter_panel import FilterPanel
 from app.gui.widgets.template_editor import TemplateEditor
 from app.models.move_result import MoveResult
@@ -179,33 +178,41 @@ class MoveTab(QWidget):
         self._move_btn = QPushButton("Copy")
         self._move_btn.setEnabled(False)
 
-        self._log_edit = QTextEdit()
-        self._log_edit.setReadOnly(True)
+        self._file_table = FileTableView()
 
         self._scan_result: ScanResult | None = None
         self._source: Path | None = None
         self._worker: MoveWorker | None = None
         self._loading = False
 
+        results_group = QGroupBox("Files")
+        results_layout = QVBoxLayout(results_group)
+        results_layout.addWidget(self._file_table)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(output_group)
         layout.addWidget(filters_group)
-        layout.addWidget(self._log_edit, stretch=1)
+        layout.addWidget(results_group, stretch=1)
         layout.addWidget(self._move_btn)
 
         self.setEnabled(False)
 
         self._dir_picker.path_changed.connect(self._update_move_btn)
         self._dir_picker.path_changed.connect(self._save_settings)
+        self._dir_picker.path_changed.connect(self._refresh_preview)
         self._template_editor.template_changed.connect(self._save_settings)
+        self._template_editor.template_changed.connect(self._refresh_preview)
         self._copy_radio.toggled.connect(self._on_copy_toggled)
         self._copy_radio.toggled.connect(self._save_settings)
         self._skip_radio.toggled.connect(self._save_settings)
         self._suffix_radio.toggled.connect(self._save_settings)
         self._override_radio.toggled.connect(self._save_settings)
         self._default_make_edit.textChanged.connect(self._save_settings)
+        self._default_make_edit.textChanged.connect(self._refresh_preview)
         self._default_model_edit.textChanged.connect(self._save_settings)
+        self._default_model_edit.textChanged.connect(self._refresh_preview)
+        self._filter_panel.filter_changed.connect(self._apply_filter)
         self._move_btn.clicked.connect(self._on_move_clicked)
 
         self._load_settings()
@@ -225,11 +232,56 @@ class MoveTab(QWidget):
         self._source = source
         self._scan_result = result
         self._filter_panel.populate(result)
+        self._file_table.set_files(result.files)
+        self._apply_filter()
+        self._refresh_preview()
         self._update_move_btn()
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _build_resolver(self):
+        """Return a callable mapping a ``PhotoFile`` to its previewed dest path.
+
+        The path is shown relative to the output directory when possible. Files
+        already moved (``resolved_dest`` set) report their actual destination.
+        Returns ``None`` when no output directory or source is available yet.
+        """
+        output = self._dir_picker.path
+        source = self._source
+        if output is None or source is None:
+            return None
+        template = self._template_editor.template
+        make = self._default_make_edit.text().strip()
+        model = self._default_model_edit.text().strip()
+
+        def resolve(photo):
+            try:
+                dest = photo.resolved_dest or resolve_dest(
+                    photo, output, template, source, make, model
+                )
+            except Exception:
+                return None
+            try:
+                return dest.relative_to(output)
+            except (ValueError, TypeError):
+                return dest
+
+        return resolve
+
+    def _refresh_preview(self) -> None:
+        """Rebuild the Output Path resolver and repaint that column."""
+        self._file_table.set_resolver(self._build_resolver())
+
+    def _apply_filter(self) -> None:
+        """Push the filter panel's selections into the table's proxy filter."""
+        if self._scan_result is None:
+            return
+        self._file_table.set_filter(
+            self._filter_panel.selected_extensions(),
+            self._filter_panel.selected_cameras(),
+        )
 
     def _update_move_btn(self) -> None:
         """Enable the action button only when both scan and output path are set."""
@@ -297,23 +349,18 @@ class MoveTab(QWidget):
     def _on_move_clicked(self) -> None:
         output_dir = self._dir_picker.path
         if not self._template_editor.is_valid:
-            self._log_edit.append("Template is invalid. Fix it before proceeding.")
+            self.move_status.emit("Template is invalid. Fix it before proceeding.")
             return
         if self._scan_result is None:
             return
 
-        exts = self._filter_panel.selected_extensions()
-        cams = self._filter_panel.selected_cameras()
-        files = [
-            f
-            for f in self._scan_result.files
-            if f.extension in exts
-            and _camera_key(f.camera_make, f.camera_model) in cams
-        ]
+        files = self._file_table.checked_visible_files()
+        if not files:
+            self.move_status.emit("No files selected.")
+            return
 
         self._move_btn.setEnabled(False)
         self.move_progress.emit(0, 0)
-        self._log_edit.clear()
 
         self._worker = MoveWorker(
             files,
@@ -339,10 +386,10 @@ class MoveTab(QWidget):
         if result.mtime_used:
             status += f"  ({result.mtime_used} using mtime)"
         self.move_status.emit(status)
-        for line in result.log:
-            self._log_edit.append(line)
+        # Reflect the actual destinations (with any collision suffix) now set on
+        # the moved PhotoFile objects.
+        self._refresh_preview()
 
     def _on_error(self, msg: str) -> None:
         self._update_move_btn()
         self.move_status.emit(f"Error: {msg}")
-        self._log_edit.append(f"Error: {msg}")
