@@ -191,3 +191,41 @@ def test_move_tab_load_scan_result(qapp, sample_source_dir):
     assert tab._move_btn.isEnabled()
     assert len(tab._filter_panel._ext_checks) > 0
     assert len(tab._filter_panel._cam_checks) > 0
+
+
+def test_move_tab_confirm_no_hidden_returns_true(qapp, sample_source_dir):
+    """With nothing hidden, the confirm step proceeds without showing a dialog."""
+    from app.core.scanner import scan_directory
+
+    result = scan_directory(sample_source_dir)
+    tab = MoveTab()
+    tab.load_scan_result(sample_source_dir, result)
+
+    visible = len(tab._file_table.checked_visible_files())
+    assert tab._file_table.hidden_selected_count() == 0
+    # Returns True immediately; if it tried to exec a dialog the test would hang.
+    assert tab._confirm_hidden_selection(visible) is True
+
+
+def test_move_tab_confirm_hidden_shows_dialog_and_aborts(qapp, monkeypatch, sample_source_dir):
+    """When checked files are hidden, a dialog is shown; not accepting aborts."""
+    from app.core.scanner import scan_directory
+
+    result = scan_directory(sample_source_dir)
+    tab = MoveTab()
+    tab.load_scan_result(sample_source_dir, result)
+
+    # Hide the unknown-camera file, leaving the Canon file checked-and-visible.
+    tab._file_table.set_filter(None, {"Canon EOS R5"})
+    assert tab._file_table.hidden_selected_count() == 1
+
+    shown = []
+    # Stub exec() so the modal dialog doesn't block; no button is "clicked",
+    # which the method treats as a cancel.
+    monkeypatch.setattr(
+        "app.gui.move_tab.QMessageBox.exec",
+        lambda self: shown.append(self) or 0,
+    )
+    visible = len(tab._file_table.checked_visible_files())
+    assert tab._confirm_hidden_selection(visible) is False
+    assert len(shown) == 1

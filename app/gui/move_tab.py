@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QRadioButton,
     QVBoxLayout,
@@ -359,6 +360,9 @@ class MoveTab(QWidget):
             self.move_status.emit("No files selected.")
             return
 
+        if not self._confirm_hidden_selection(len(files)):
+            return
+
         self._move_btn.setEnabled(False)
         self.move_progress.emit(0, 0)
 
@@ -376,6 +380,42 @@ class MoveTab(QWidget):
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
+
+    def _confirm_hidden_selection(self, visible_count: int) -> bool:
+        """Confirm before acting when checked files are hidden by the filter.
+
+        Args:
+            visible_count: Number of checked, filter-visible files that will move.
+
+        Returns:
+            ``True`` to proceed, ``False`` if the user cancels. Returns ``True``
+            immediately when no checked files are hidden.
+        """
+        hidden = self._file_table.hidden_selected_count()
+        if hidden <= 0:
+            return True
+
+        copying = self._copy_radio.isChecked()
+        action = "Copy" if copying else "Move"
+        action_past = "copied" if copying else "moved"
+        h_noun, h_verb = ("file", "is") if hidden == 1 else ("files", "are")
+        v_noun = "file" if visible_count == 1 else "files"
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(f"{action} fewer files than selected")
+        box.setText(
+            f"{hidden} selected {h_noun} {h_verb} hidden by the current filter "
+            f"and won't be {action_past}."
+        )
+        box.setInformativeText(f"Continue with the {visible_count} visible {v_noun}?")
+        proceed_btn = box.addButton(
+            f"{action} {visible_count} {v_noun}", QMessageBox.ButtonRole.AcceptRole
+        )
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(proceed_btn)
+        box.exec()
+        return box.clickedButton() is proceed_btn
 
     def _on_progress(self, current: int, total: int) -> None:
         self.move_progress.emit(current, total)

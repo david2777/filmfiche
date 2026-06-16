@@ -201,6 +201,35 @@ def test_view_count_label_updates(qapp, photos):
     assert "0 of 3 selected" in view._count_label.text()
 
 
+def test_view_warns_about_checked_rows_hidden_by_filter(qapp, photos):
+    view = FileTableView()
+    view.set_files(photos)  # a.jpg, b.png, c.jpg all checked
+
+    # Nothing hidden: terse label, warning hidden.
+    assert view.hidden_selected_count() == 0
+    assert not view._warning_label.isVisibleTo(view)
+    assert view._count_label.text() == "3 of 3 selected"
+
+    # Hide the single checked PNG → 2 will move, 1 hidden (singular wording).
+    view.set_filter({"jpg"}, None)
+    assert view.hidden_selected_count() == 1
+    assert view._count_label.text() == "2 to move · 3 selected · 1 hidden"
+    assert view._warning_label.isVisibleTo(view)
+    assert "1 selected file is hidden" in view._warning_label.text()
+
+    # Hide both checked JPGs → 1 will move, 2 hidden (plural wording).
+    view.set_filter({"png"}, None)
+    assert view.hidden_selected_count() == 2
+    assert view._count_label.text() == "1 to move · 3 selected · 2 hidden"
+    assert "2 selected files are hidden" in view._warning_label.text()
+
+    # Clearing the filter restores the terse label and hides the warning.
+    view.set_filter(None, None)
+    assert view.hidden_selected_count() == 0
+    assert view._count_label.text() == "3 of 3 selected"
+    assert not view._warning_label.isVisibleTo(view)
+
+
 def test_view_selection_changed_signal(qapp, photos):
     view = FileTableView()
     view.set_files(photos)

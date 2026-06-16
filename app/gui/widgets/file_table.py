@@ -327,11 +327,15 @@ class FileTableView(QWidget):
 
         self._select_all_btn = QPushButton("Select All")
         self._select_none_btn = QPushButton("Select None")
+        self._warning_label = QLabel("")
+        self._warning_label.setStyleSheet("color: #ffffff;")
+        self._warning_label.setVisible(False)
         self._count_label = QLabel("0 of 0 selected")
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self._select_all_btn)
         toolbar.addWidget(self._select_none_btn)
+        toolbar.addWidget(self._warning_label)
         toolbar.addStretch()
         toolbar.addWidget(self._count_label)
 
@@ -380,6 +384,14 @@ class FileTableView(QWidget):
                 out.append(self._model.photo_at(src.row()))
         return out
 
+    def hidden_selected_count(self) -> int:
+        """Return the number of checked files hidden by the filter.
+
+        These pass neither into :meth:`checked_visible_files` nor a move, so the
+        UI warns about them.
+        """
+        return self._model.checked_count() - len(self.checked_visible_files())
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
@@ -396,10 +408,21 @@ class FileTableView(QWidget):
         self.selection_changed.emit()
 
     def _update_count_label(self) -> None:
-        checked = self._model.checked_count()
+        selected = self._model.checked_count()
         total = self._model.rowCount()
-        visible = self._proxy.rowCount()
-        text = f"{checked} of {total} selected"
-        if visible != total:
-            text += f"  ({visible} shown)"
-        self._count_label.setText(text)
+        to_move = len(self.checked_visible_files())
+        hidden = selected - to_move  # checked rows the filter hides from a move
+
+        if hidden > 0:
+            self._count_label.setText(
+                f"{to_move} to move · {selected} selected · {hidden} hidden"
+            )
+            noun, verb = ("file", "is") if hidden == 1 else ("files", "are")
+            self._warning_label.setText(
+                f"⚠ {hidden} selected {noun} {verb} hidden by the filter "
+                f"and won't be moved"
+            )
+            self._warning_label.setVisible(True)
+        else:
+            self._count_label.setText(f"{selected} of {total} selected")
+            self._warning_label.setVisible(False)
