@@ -5,7 +5,6 @@ A simple desktop app for organizing photos and videos by date and camera metadat
 ![Image](docs/screenshot.png "Image")
 
 ## Features
-
 - Recursive scan of source directories for photos and videos
 - Metadata extraction from JPEG, PNG, HEIC, RAF (Fujifilm), and MOV/MP4 files
 - Camera info sourced from EXIF Make/Model or video container device metadata
@@ -17,12 +16,17 @@ A simple desktop app for organizing photos and videos by date and camera metadat
 - Files without a usable date use the modified date (but warn the user on scan and copy)
 - Default Make / Default Model fallbacks for files with no camera metadata
 
-## Tested
-- Windows 11
-- .jpeg and .raf from Fujifilm X-S20
+## Tested Devices / Formats
+- iPhone (jpg, mov, dng)
+- Fujifilm Mirrorless (jpg, mov, raf)
 
-## Known Not Working
-- .mov (at least from a Fujifilm X-S20)
+If you find a format that doesn't work, feel free to open an issue and provide a sample file.
+
+# Future Goals
+- Test on more devices
+- Add file format conversion (e.g. HEIC to JPEG)
+- Add support for more metadata (e.g. Lens, GPS, Content, etc.)
+- Interactive baking of metadata into film scans (currently using a CLI tool I built for this)
 
 ## Requirements
 
