@@ -311,6 +311,12 @@ class FileTableView(QWidget):
             QAbstractItemView.EditTrigger.NoEditTriggers
         )
         self._table.setAlternatingRowColors(True)
+        # Breathing room so cell text isn't flush against the column edges. With
+        # ResizeToContents columns (Date/Camera) the style folds this padding
+        # into the computed width, widening the column rather than clipping.
+        self._table.setStyleSheet(
+            "QTableView::item { padding-left: 6px; padding-right: 6px; }"
+        )
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)

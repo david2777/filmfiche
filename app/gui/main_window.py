@@ -27,6 +27,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("Filmfiche")
         self.setMinimumSize(800, 600)
+        self.resize(1200, 900)
 
         self._scan_tab = ScanTab()
         self._move_tab = MoveTab()
