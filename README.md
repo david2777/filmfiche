@@ -22,7 +22,7 @@ A simple desktop app for organizing photos and videos by date and camera metadat
 
 If you find a format that doesn't work, feel free to open an issue and provide a sample file.
 
-# Future Goals
+## Future Goals
 - Test on more devices
 - Add file format conversion (e.g. HEIC to JPEG)
 - Add support for more metadata (e.g. Lens, GPS, Content, etc.)
@@ -34,6 +34,18 @@ If you find a format that doesn't work, feel free to open an issue and provide a
 - Dependencies: `PySide6 exifread Pillow pillow-heif hachoir piexif`
 
 ## Setup
+
+### Using uv (recommended)
+
+[uv](https://docs.astral.sh/uv/) reads `pyproject.toml` and `uv.lock` to build a
+virtual environment with pinned dependencies:
+
+```bash
+uv sync          # create .venv and install all dependencies (incl. test deps)
+uv run main.py   # launch the app
+```
+
+### Using pip
 
 ```bash
 pip install PySide6 exifread Pillow pillow-heif hachoir piexif
@@ -58,5 +70,6 @@ Example: `{camera_model}/{year}/{month}` → `X-S20/2024/03/`
 ## Running Tests
 
 ```bash
-python -m pytest
+uv run pytest     # with uv
+python -m pytest  # with pip
 ```
