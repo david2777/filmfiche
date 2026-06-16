@@ -37,7 +37,7 @@ filmfiche/
     │   ├── photo_file.py      # PhotoFile dataclass
     │   └── scan_result.py     # ScanResult (file list, extension map, camera map)
     ├── core/
-    │   ├── metadata.py        # EXIF + hachoir video metadata extraction
+    │   ├── metadata.py        # EXIF + QuickTime atom + hachoir video metadata extraction
     │   ├── template.py        # Template parsing, token substitution, validation
     │   ├── scanner.py         # Directory walk → list[PhotoFile]
     │   └── mover.py           # Copy/move execution, collision handling
@@ -108,8 +108,29 @@ Directory templates use tokens like `{year}`, `{month}`, `{day}`, `{camera}`, `{
 
 ### Metadata Priority
 
-- **Date**: `DateTimeOriginal` → `DateTime` → `DateTimeDigitized` → hachoir video creation date → missing
-- **Camera**: EXIF Make+Model → video container device metadata → `"unknown_camera"`
+- **Photo date**: `DateTimeOriginal` → `DateTime` → `DateTimeDigitized` → missing
+- **Video date**: `com.apple.quicktime.creationdate` (true capture time, from
+  `moov/meta`) → hachoir container creation date (`mvhd`) → missing
+- **Camera (photo)**: EXIF Make + Model → `None`
+- **Camera (video)**: QuickTime `moov/meta` `com.apple.quicktime.make`/`.model`
+  → `udta` `©mak`/`©mod` → Fujifilm `udta` `©inf` ("`<make> DIGITAL CAMERA <model>`",
+  split into make/model) → `None`
+- Missing date falls back to file mtime (with `has_metadata=False`); missing
+  camera renders as `"unknown_camera"` in templates.
+
+### QuickTime / MOV Metadata (`metadata.py`)
+
+`.mov`/`.mp4`/`.m4v`/`.3gp` are parsed directly via a small streaming atom
+reader (`_iter_atoms`/`_find_atom`) that only reads atom headers and seeks past
+media payloads, so it stays cheap on multi-GB files. It walks
+`moov → {meta, udta}`:
+- `meta` (Apple keys/ilst table; handles the MP4 FullBox vs QuickTime
+  no-version/flags split) → make, model, and precise creation date.
+- `udta` `©`-prefixed text atoms → make/model, including the Fujifilm `©inf`
+  combined-description split.
+
+hachoir still supplies the date for non-QuickTime containers (avi/mkv/wmv/mts)
+and as the fallback when no `creationdate` key is present.
 
 ### Collision Handling Modes
 

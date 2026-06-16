@@ -128,11 +128,13 @@ def raf_with_exif(tmp_path) -> Path:
     return _make_raf(tmp_path / "test.raf", exif)
 
 
-def _make_mov(path: Path, mac_epoch_seconds: int) -> Path:
-    """Build a minimal QuickTime file (ftyp + moov/mvhd) with the given creation time."""
-    def atom(fourcc: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", 8 + len(data)) + fourcc + data
+def _atom(fourcc: bytes, data: bytes) -> bytes:
+    """Wrap *data* in an ISO-BMFF/QuickTime atom (size + fourcc + payload)."""
+    return struct.pack(">I", 8 + len(data)) + fourcc + data
 
+
+def _mvhd_atom(mac_epoch_seconds: int) -> bytes:
+    """Build a minimal ``mvhd`` atom carrying the given Mac-epoch creation time."""
     identity_matrix = struct.pack(
         ">9i",
         0x00010000, 0, 0,
@@ -150,8 +152,51 @@ def _make_mov(path: Path, mac_epoch_seconds: int) -> Path:
         + b"\x00" * 24
         + struct.pack(">I", 1)
     )
-    ftyp = atom(b"ftyp", b"qt  " + struct.pack(">I", 0) + b"qt  ")
-    moov = atom(b"moov", atom(b"mvhd", mvhd_data))
+    return _atom(b"mvhd", mvhd_data)
+
+
+def _make_mov(path: Path, mac_epoch_seconds: int) -> Path:
+    """Build a minimal QuickTime file (ftyp + moov/mvhd) with the given creation time."""
+    ftyp = _atom(b"ftyp", b"qt  " + struct.pack(">I", 0) + b"qt  ")
+    moov = _atom(b"moov", _mvhd_atom(mac_epoch_seconds))
+    path.write_bytes(ftyp + moov)
+    return path
+
+
+def _make_mov_apple_meta(
+    path: Path, make: str, model: str, creationdate: str, mac_epoch_seconds: int
+) -> Path:
+    """Build a MOV with an Apple-style ``moov/meta`` keys/ilst metadata table."""
+    key_names = [
+        b"com.apple.quicktime.make",
+        b"com.apple.quicktime.model",
+        b"com.apple.quicktime.creationdate",
+    ]
+    entries = b"".join(
+        struct.pack(">I", 8 + len(name)) + b"mdta" + name for name in key_names
+    )
+    keys_atom = _atom(b"keys", b"\x00\x00\x00\x00" + struct.pack(">I", len(key_names)) + entries)
+
+    def item(index: int, value: str) -> bytes:
+        # data atom = type(4, 1 == UTF-8) + locale(4) + value
+        data_atom = _atom(b"data", struct.pack(">II", 1, 0) + value.encode("utf-8"))
+        return struct.pack(">I", 8 + len(data_atom)) + struct.pack(">I", index) + data_atom
+
+    ilst_atom = _atom(b"ilst", item(1, make) + item(2, model) + item(3, creationdate))
+    # QuickTime `meta` has no version/flags prefix (unlike MP4).
+    meta_atom = _atom(b"meta", keys_atom + ilst_atom)
+    moov = _atom(b"moov", _mvhd_atom(mac_epoch_seconds) + meta_atom)
+    ftyp = _atom(b"ftyp", b"qt  " + struct.pack(">I", 0) + b"qt  ")
+    path.write_bytes(ftyp + moov)
+    return path
+
+
+def _make_mov_fuji_udta(path: Path, info: str, mac_epoch_seconds: int) -> Path:
+    """Build a MOV with a Fujifilm-style ``moov/udta`` ``©inf`` description atom."""
+    text = info.encode("utf-8")
+    inf_atom = _atom(b"\xa9inf", struct.pack(">H", len(text)) + b"\x00\x00" + text)
+    moov = _atom(b"moov", _mvhd_atom(mac_epoch_seconds) + _atom(b"udta", inf_atom))
+    ftyp = _atom(b"ftyp", b"qt  " + struct.pack(">I", 0) + b"qt  ")
     path.write_bytes(ftyp + moov)
     return path
 
@@ -163,6 +208,32 @@ _MAC_1960 = 1_767_225_600  # 1960-01-01 00:00:00 UTC in Mac epoch seconds
 def mov_with_date(tmp_path) -> Path:
     """Minimal QuickTime MOV with a 1960-01-01 creation date."""
     return _make_mov(tmp_path / "test.mov", _MAC_1960)
+
+
+@pytest.fixture()
+def mov_apple_meta(tmp_path) -> Path:
+    """MOV with Apple ``moov/meta`` make/model and a tz-aware creation date.
+
+    The mvhd date is deliberately 1960 so the test proves the precise
+    ``com.apple.quicktime.creationdate`` takes priority over the container date.
+    """
+    return _make_mov_apple_meta(
+        tmp_path / "iphone.mov",
+        make="Apple",
+        model="iPhone 17 Pro",
+        creationdate="2026-05-09T15:08:49-0700",
+        mac_epoch_seconds=_MAC_1960,
+    )
+
+
+@pytest.fixture()
+def mov_fuji_udta(tmp_path) -> Path:
+    """MOV with a Fujifilm ``©inf`` description and a 1960-01-01 container date."""
+    return _make_mov_fuji_udta(
+        tmp_path / "fuji.mov",
+        info="FUJIFILM DIGITAL CAMERA X-S20",
+        mac_epoch_seconds=_MAC_1960,
+    )
 
 
 # ---------------------------------------------------------------------------

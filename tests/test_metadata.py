@@ -66,3 +66,26 @@ def test_mov_date(mov_with_date: Path):
     assert result.date_taken.tzinfo is None
     assert result.has_metadata is True
     assert result.extension == "mov"
+    assert result.camera_make is None
+    assert result.camera_model is None
+
+
+def test_mov_apple_meta(mov_apple_meta: Path):
+    """iPhone-style MOV: make/model from moov/meta, capture date over container date."""
+    result = extract_metadata(mov_apple_meta)
+    assert result.camera_make == "Apple"
+    assert result.camera_model == "iPhone 17 Pro"
+    # com.apple.quicktime.creationdate (local wall time) wins over the 1960 mvhd.
+    assert result.date_taken == datetime(2026, 5, 9, 15, 8, 49)
+    assert result.date_taken.tzinfo is None
+    assert result.has_metadata is True
+
+
+def test_mov_fuji_udta(mov_fuji_udta: Path):
+    """Fujifilm-style MOV: make/model split out of the combined ©inf description."""
+    result = extract_metadata(mov_fuji_udta)
+    assert result.camera_make == "FUJIFILM"
+    assert result.camera_model == "X-S20"
+    # No QuickTime creationdate, so the date falls back to the mvhd container date.
+    assert result.date_taken == datetime(1960, 1, 1, 0, 0, 0)
+    assert result.has_metadata is True
