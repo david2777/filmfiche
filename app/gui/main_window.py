@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Slot
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from app.gui.move_tab import MoveTab
 from app.gui.scan_tab import ScanTab
+from app.gui.tagger_dialog import TaggerDialog
 
 
 class MainWindow(QMainWindow):
@@ -34,6 +36,9 @@ class MainWindow(QMainWindow):
         self._progress_bar = QProgressBar()
         self._progress_bar.setValue(0)
         self._status_label = QLabel("Ready.")
+        self._tagger_dialog: TaggerDialog | None = None
+
+        self._build_menu()
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -48,6 +53,22 @@ class MainWindow(QMainWindow):
         self._scan_tab.scan_complete.connect(self._on_scan_complete)
         self._move_tab.move_progress.connect(self._on_progress)
         self._move_tab.move_status.connect(self._status_label.setText)
+
+    def _build_menu(self) -> None:
+        """Add the menu bar with the Tools → Film Metadata Tagger action."""
+        tools_menu = self.menuBar().addMenu("&Tools")
+        tagger_action = QAction("Film Metadata Tagger…", self)
+        tagger_action.triggered.connect(self._open_tagger)
+        tools_menu.addAction(tagger_action)
+
+    @Slot()
+    def _open_tagger(self) -> None:
+        """Open (or re-focus) the Film Metadata Tagger window."""
+        if self._tagger_dialog is None:
+            self._tagger_dialog = TaggerDialog(self)
+        self._tagger_dialog.show()
+        self._tagger_dialog.raise_()
+        self._tagger_dialog.activateWindow()
 
     @Slot(int, int)
     def _on_progress(self, current: int, total: int) -> None:

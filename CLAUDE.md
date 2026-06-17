@@ -35,21 +35,26 @@ filmfiche/
 └── app/
     ├── models/
     │   ├── photo_file.py      # PhotoFile dataclass
-    │   └── scan_result.py     # ScanResult (file list, extension map, camera map)
+    │   ├── scan_result.py     # ScanResult (file list, extension map, camera map)
+    │   └── film_frame.py      # FilmFrame + global/per-item key split (tagger)
     ├── core/
     │   ├── metadata.py        # EXIF + QuickTime atom + hachoir video metadata extraction
     │   ├── template.py        # Template parsing, token substitution, validation
     │   ├── scanner.py         # Directory walk → list[PhotoFile]
-    │   └── mover.py           # Copy/move execution, collision handling
+    │   ├── mover.py           # Copy/move execution, collision handling
+    │   └── tagger.py          # build_exif + write_image + output_path (film tagger)
     └── gui/
-        ├── main_window.py     # QMainWindow, tab widget, menu bar
+        ├── main_window.py     # QMainWindow, tab widget, menu bar (Tools → Tagger)
         ├── scan_tab.py        # Step 1 UI
         ├── move_tab.py        # Step 2 UI
+        ├── tagger_dialog.py   # Film Metadata Tagger window + Thumbnail/Export workers
         └── widgets/
             ├── dir_picker.py
             ├── template_editor.py
             ├── filter_panel.py
-            └── file_table.py      # Scan-results table (model/view) + selection
+            ├── file_table.py      # Scan-results table (model/view) + selection
+            ├── drop_area.py       # Drag-drop / browse target (tagger)
+            └── frame_table.py     # Editable per-frame metadata grid w/ thumbnails (tagger)
 ```
 
 ### Key Data Flow
@@ -138,6 +143,49 @@ and as the fallback when no `creationdate` key is present.
 - **Copy with Suffix**: append `_1`, `_2`, … until name is free
 - **Override**: overwrite unconditionally
 
+### Film Metadata Tagger (`tagger_dialog.py`, `tagger.py`, `film_frame.py`)
+
+A standalone `QDialog` launched from **Tools → Film Metadata Tagger…** (held on
+`MainWindow._tagger_dialog`, reused/re-focused on reopen). It ports the standalone
+`analog_import` CLI into the app: tag scanned film frames and export renamed copies.
+
+Workflow: drag/drop or browse a folder/images (`DropArea`; `collect_image_paths`
+expands folders non-recursively and sorts the combined result by filename
+ascending) → frames appear in `FrameTable` with thumbnails, auto-numbered 1..N in
+that order → set camera make/model + reel/document/film/ISO globally, edit
+lens/exposure/etc per frame, **or** Import JSON → **Export…** to a chosen root.
+
+- **Reverse Order button**: `FrameTable.reverse_order()` flips the frame sequence
+  and renumbers 1..N (last file becomes #1). For when the scan direction is the
+  opposite of the metadata order — reverse, then import/enter metadata so it pairs
+  correctly. Thumbnails are cached by frame identity (`id(frame)`), so they follow
+  their frames on reorder and a still-loading thumbnail can't land on the wrong
+  row.
+
+- **Metadata model**: each frame's per-item values are a plain dict keyed exactly
+  like the Lightme/Logbook JSON schema, so `build_exif` is reused unchanged and
+  JSON import/round-trip needs no translation. `GLOBAL_KEYS` (Make, Model,
+  ReelName, DocumentName, SpectralSensitivity, Description, ISO/ISOSpeed,
+  SensitivityType, FileSource, Software) are merged into every frame at export by
+  `build_full_entry`; `PER_ITEM_KEYS` (ImageNumber, DateTimeOriginal, Lens*,
+  FNumber, ExposureTime, FocalLength*, GPS*, Notes, ImageUniqueID) live on the
+  frame. `ImageUniqueID` defaults to `"{ReelName}_{ImageNumber}"`.
+- **JSON pairing**: `frames_from_json` pairs the i-th entry with the i-th frame
+  (same ordering as `analog_import`) but warns on a count mismatch instead of
+  erroring — it maps `min(entries, frames)`.
+- **Normalisation**: `normalize_entry` strips/drops blank values and parses
+  fractional shutter strings (e.g. `"1/125"`) before `build_exif`.
+- **Output naming**: `output_path` → `{root}/{reel}-{sanitize(document)}/`
+  `{reel}-{number:04d}{ext}` (spaces → underscores). JPEG bytes are copied
+  verbatim + EXIF spliced (`piexif.insert`); TIFF is round-tripped via Pillow
+  preserving compression.
+- **Threading**: `ThumbnailWorker` (Pillow → `QImage` off the GUI thread, emits
+  `(row, QImage)`) and `ExportWorker` (`progress`/`finished(count)`/`error`),
+  following the same `QThread` + Signal pattern as scan/move. Note `FrameTable`
+  uses a plain editable `QTableWidget` (a roll is only tens of frames), unlike the
+  model/view `file_table.py`.
+- `piexif` is a runtime dependency (was previously dev-only).
+
 ## Implementation Status
 
 | Task | Module | Status |
@@ -151,3 +199,4 @@ and as the fallback when no `creationdate` key is present.
 | 7 | `app/gui/scan_tab.py`, `app/gui/move_tab.py` | Done |
 | 8 | `app/gui/main_window.py` | Done |
 | 9 | `main.py` | Done |
+| 10 | Film Metadata Tagger: `app/core/tagger.py`, `app/models/film_frame.py`, `app/gui/tagger_dialog.py`, `app/gui/widgets/{drop_area,frame_table}.py` | Done |

@@ -15,6 +15,9 @@ A simple desktop app for organizing photos and videos by date and camera metadat
 - Collision handling: Skip, Add Suffix, or Overwrite
 - Files without a usable date use the modified date (but warn the user on scan and copy)
 - Default Make / Default Model fallbacks for files with no camera metadata
+- **Film Metadata Tagger** (Tools menu): drag/drop or browse scans, set camera
+  make/model globally and edit lens/exposure/etc per frame (or import a
+  Lightme/Logbook JSON), then export tagged, renamed copies
 
 ## Tested Devices / Formats
 - iPhone (jpg, mov, dng)
@@ -22,11 +25,26 @@ A simple desktop app for organizing photos and videos by date and camera metadat
 
 If you find a format that doesn't work, feel free to open an issue and provide a sample file.
 
+## Film Metadata Tagger
+
+Open it from **Tools → Film Metadata Tagger…**. Drag in a folder of scans (or
+browse for one), and the frames appear with thumbnails, numbered 1..N by filename
+ascending. Set the camera make/model once for the whole reel, then edit lens,
+aperture, shutter, focal length, notes, and GPS per frame — or **Import JSON…** to
+pull everything in from a Lightme/Logbook export (entries pair to images by order).
+If your scans run the opposite direction to the metadata, hit **Reverse Order** to
+flip the sequence before importing. Hit **Export…** to pick a destination; each
+frame is written as `{ReelName}-{ImageNumber:04d}` inside a
+`{ReelName}-{DocumentName}` subfolder with the metadata embedded as EXIF. JPEGs are
+copied byte-for-byte (pixels untouched); TIFFs are round-tripped preserving
+compression.
+
+![Image](docs/screenshot-film-metadata.png "Image")
+
 ## Future Goals
 - Test on more devices
 - Add file format conversion (e.g. HEIC to JPEG)
 - Add support for more metadata (e.g. Lens, GPS, Content, etc.)
-- Interactive baking of metadata into film scans (currently using a CLI tool I built for this)
 
 ## Requirements
 
