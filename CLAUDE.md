@@ -10,7 +10,7 @@ Filmfiche is a PySide6 desktop app that scans a folder for photos and videos, ex
 
 ```bash
 # Install dependencies
-pip install PySide6 exifread Pillow pillow-heif hachoir piexif
+pip install PySide6 exifread Pillow pillow-heif hachoir piexif numpy tifffile
 
 # Run the app
 python main.py
@@ -36,18 +36,21 @@ filmfiche/
     ├── models/
     │   ├── photo_file.py      # PhotoFile dataclass
     │   ├── scan_result.py     # ScanResult (file list, extension map, camera map)
-    │   └── film_frame.py      # FilmFrame + global/per-item key split (tagger)
+    │   ├── film_frame.py      # FilmFrame + global/per-item key split (tagger)
+    │   └── split_result.py    # SplitResult (half-frame splitter batch summary)
     ├── core/
     │   ├── metadata.py        # EXIF + QuickTime atom + hachoir video metadata extraction
     │   ├── template.py        # Template parsing, token substitution, validation
     │   ├── scanner.py         # Directory walk → list[PhotoFile]
     │   ├── mover.py           # Copy/move execution, collision handling
-    │   └── tagger.py          # build_exif + write_image + output_path (film tagger)
+    │   ├── tagger.py          # build_exif + write_image + output_path (film tagger)
+    │   └── half_frame.py      # Seam detection + split/crop (half-frame splitter)
     └── gui/
-        ├── main_window.py     # QMainWindow, tab widget, menu bar (Tools → Tagger)
+        ├── main_window.py     # QMainWindow, tab widget, menu bar (Tools → Tagger, Splitter)
         ├── scan_tab.py        # Step 1 UI
         ├── move_tab.py        # Step 2 UI
         ├── tagger_dialog.py   # Film Metadata Tagger window + Thumbnail/Export workers
+        ├── half_frame_dialog.py  # Half Frame Splitter window + Split worker
         └── widgets/
             ├── dir_picker.py
             ├── template_editor.py
@@ -186,6 +189,40 @@ lens/exposure/etc per frame, **or** Import JSON → **Export…** to a chosen ro
   model/view `file_table.py`.
 - `piexif` is a runtime dependency (was previously dev-only).
 
+### Half Frame Splitter (`half_frame_dialog.py`, `half_frame.py`)
+
+A standalone `QDialog` launched from **Tools → Half Frame Splitter…** (held on
+`MainWindow._splitter_dialog`). Half-frame cameras put two portrait photos in one
+35mm frame, so a scan is one landscape image with two photos side by side and a
+film-gap band between them. The tool batch-splits a folder into individual
+`{stem}-a` (left) / `{stem}-b` (right) photos, each cropped to 3:4.
+
+- **Seam detection** (`detect_seam_x`, Pillow + NumPy): a 1-D projection profile.
+  Each column's vertical **variance** is computed (`gray.var(axis=0)`) and
+  smoothed; within a central search window the lowest-scoring column wins — the
+  uniform gap band scores low, textured frames score high. An optional
+  `center_bias` pulls toward the middle on busy images. Falls back to `W // 2`.
+- **Crop**: `crop_to_aspect` center-crops each half to 3:4 (width:height); each
+  half is cropped independently, so an off-center seam still yields two 3:4 photos
+  of differing sizes. `split_image` also supports a `gap` (px dropped each side).
+  The crop geometry (`_aspect_crop_box`/`_split_boxes`/`_aspect_within`) is pure and
+  shared by the Pillow and NumPy paths so both compute identical boxes.
+- **`process_file`**: open → seam (or `W // 2` in `"center"` mode) → split → save
+  `-a`/`-b`, carrying EXIF + ICC profile, JPEG `quality=95`. Pixels are split
+  as-is (no `exif_transpose`).
+- **16-bit colour TIFFs**: Pillow has no native 16-bit-per-channel RGB mode, so it
+  silently truncates 48-bit colour scans to 8 bits on open. `process_file` detects
+  such files (TIFF, `dtype.itemsize > 1`, `samplesperpixel > 1`) and routes them
+  through `tifffile` + NumPy instead (`_split_high_bit_tiff` → `_luma` seam
+  detection → array-slice crops → `_write_tiff_array`), preserving full bit depth
+  and the ICC profile (tag 34675). **16-bit grayscale** (Pillow `I;16`) and all
+  8-bit formats stay on the Pillow path, which already round-trips losslessly.
+- **GUI**: two `DirPicker`s, Auto/Center mode, search-window % + gap px spinboxes
+  (no live preview — tune by re-running). `SplitWorker` (`progress`/`finished`/
+  `error`) returns a `SplitResult`; per-file errors are counted, not fatal.
+- Adds `numpy` and `tifffile` as runtime dependencies. Supported inputs:
+  `jpg/jpeg/tif/tiff/png`.
+
 ## Implementation Status
 
 | Task | Module | Status |
@@ -200,3 +237,4 @@ lens/exposure/etc per frame, **or** Import JSON → **Export…** to a chosen ro
 | 8 | `app/gui/main_window.py` | Done |
 | 9 | `main.py` | Done |
 | 10 | Film Metadata Tagger: `app/core/tagger.py`, `app/models/film_frame.py`, `app/gui/tagger_dialog.py`, `app/gui/widgets/{drop_area,frame_table}.py` | Done |
+| 11 | Half Frame Splitter: `app/core/half_frame.py`, `app/models/split_result.py`, `app/gui/half_frame_dialog.py` | Done |

@@ -41,7 +41,20 @@ compression.
 
 ![Image](docs/screenshot-film-metadata.png "Image")
 
+## Half Frame Splitter
+
+Open it from **Tools → Half Frame Splitter…**. Half-frame cameras record two
+portrait photos in a single 35mm frame, so a scan is one landscape image with two
+photos side by side. Point the tool at a folder of these scans and an output
+folder, and it finds the film gap between the two photos, splits them, crops each
+to 3:4, and writes them out keeping the original name with `-a` (left) and `-b`
+(right) appended. Detection is automatic (it locates the low-detail seam band); if
+a scan is off, switch to **Center** split or adjust the search window and re-run.
+
 ## Future Goals
+- Test on more devices
+- Add file format conversion (e.g. HEIC to JPEG)
+- Add support for more metadata (e.g. Lens, GPS, Content, etc.)
 - Test on more devices
 - Add file format conversion (e.g. HEIC to JPEG)
 - Add support for more metadata (e.g. Lens, GPS, Content, etc.)
@@ -49,7 +62,7 @@ compression.
 ## Requirements
 
 - Python 3.14+
-- Dependencies: `PySide6 exifread Pillow pillow-heif hachoir piexif`
+- Dependencies: `PySide6 exifread Pillow pillow-heif hachoir piexif numpy`
 
 ## Setup
 
@@ -66,7 +79,7 @@ uv run main.py   # launch the app
 ### Using pip
 
 ```bash
-pip install PySide6 exifread Pillow pillow-heif hachoir piexif
+pip install PySide6 exifread Pillow pillow-heif hachoir piexif numpy
 python main.py
 ```
 
