@@ -182,6 +182,16 @@ lens/exposure/etc per frame, **or** Import JSON → **Export…** to a chosen ro
   `{reel}-{number:04d}{ext}` (spaces → underscores). JPEG bytes are copied
   verbatim + EXIF spliced (`piexif.insert`); TIFF is round-tripped via Pillow
   preserving compression.
+- **16-bit colour TIFFs**: like the splitter, Pillow truncates 48-bit RGB scans to
+  8 bits on open. `write_image(src, dst, exif_bytes, entry)` detects >8-bit
+  multi-channel TIFFs (`_write_tiff_16bit_if_high`) and round-trips them losslessly
+  via tifffile, carrying ICC + resolution. tifffile can't write EXIF/GPS sub-IFDs,
+  so `_build_exif_ifds` (the tag-dict half of `build_exif`) is reused and
+  `_exif_extratags` flattens the 0th + EXIF tags into IFD0 (valid TIFF/EP, read by
+  exiftool/Lightroom/Pillow); GPS is appended to ImageDescription as text. The
+  `entry` arg is required for this path; without it (or for 16-bit grayscale / 8-bit
+  files) the lossless Pillow path is used. `build_full_entry` already normalises the
+  entry, so `_build_exif_ifds` sees coerced values.
 - **Threading**: `ThumbnailWorker` (Pillow → `QImage` off the GUI thread, emits
   `(row, QImage)`) and `ExportWorker` (`progress`/`finished(count)`/`error`),
   following the same `QThread` + Signal pattern as scan/move. Note `FrameTable`

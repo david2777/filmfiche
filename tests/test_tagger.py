@@ -2,8 +2,10 @@
 
 from pathlib import Path
 
+import numpy as np
 import piexif
 import pytest
+import tifffile
 from PIL import Image
 
 from app.core.tagger import (
@@ -33,6 +35,14 @@ def _make_jpeg(path: Path) -> Path:
 def _make_tiff(path: Path) -> Path:
     Image.new("RGB", (8, 8), color=(30, 160, 70)).save(path, format="TIFF")
     return path
+
+
+def _make_tiff16_rgb(path: Path, *, icc: bytes | None = None) -> np.ndarray:
+    """Write a 48-bit (16-bit/channel) RGB TIFF and return its pixel array."""
+    arr = (np.random.default_rng(3).random((10, 8, 3)) * 65535).astype(np.uint16)
+    extratags = [(34675, 7, len(icc), icc, True)] if icc else []
+    tifffile.imwrite(path, arr, photometric="rgb", extratags=extratags)
+    return arr
 
 
 def _sample_entry() -> dict:
@@ -106,6 +116,70 @@ def test_write_image_rejects_unsupported(tmp_path):
     Image.new("RGB", (8, 8)).save(src, format="PNG")
     with pytest.raises(ValueError):
         write_image(src, tmp_path / "out.png", build_exif(_sample_entry()))
+
+
+def test_write_image_16bit_rgb_preserves_bit_depth(tmp_path):
+    """48-bit RGB TIFFs keep full 16-bit pixels (Pillow would truncate to 8)."""
+    src = tmp_path / "scan.tif"
+    pixels = _make_tiff16_rgb(src)
+    dst = tmp_path / "out.tif"
+    entry = _sample_entry()
+
+    write_image(src, dst, build_exif(entry), entry)
+
+    with tifffile.TiffFile(dst) as tf:
+        page = tf.pages[0]
+        out = page.asarray()
+    assert out.dtype == np.uint16
+    assert page.bitspersample == 16 and page.samplesperpixel == 3
+    assert np.array_equal(out, pixels)  # pixel values are untouched
+
+
+def test_write_image_16bit_rgb_flattens_metadata(tmp_path):
+    """Metadata is readable from a 16-bit RGB export (flattened into IFD0)."""
+    src = tmp_path / "scan.tif"
+    _make_tiff16_rgb(src)
+    dst = tmp_path / "out.tif"
+    entry = _sample_entry()
+
+    write_image(src, dst, build_exif(entry), entry)
+
+    with Image.open(dst) as img:
+        exif = img.getexif()
+    assert str(exif.get(piexif.ImageIFD.Make, "")).startswith("Olympus")
+    assert str(exif.get(piexif.ExifIFD.LensModel, "")).startswith("Zuiko 50mm")
+    assert exif.get(piexif.ExifIFD.DateTimeOriginal) == "2026:05:05 20:04:14"
+    num = exif.get(piexif.ExifIFD.FNumber)
+    assert float(num) == pytest.approx(1.8, abs=1e-3)
+
+
+def test_write_image_16bit_rgb_preserves_icc(tmp_path):
+    """The ICC profile survives a 16-bit RGB export."""
+    src = tmp_path / "scan.tif"
+    icc = b"ICC-PROFILE-BYTES" * 4
+    _make_tiff16_rgb(src, icc=icc)
+    dst = tmp_path / "out.tif"
+    entry = _sample_entry()
+
+    write_image(src, dst, build_exif(entry), entry)
+
+    with tifffile.TiffFile(dst) as tf:
+        tag = tf.pages[0].tags.get("InterColorProfile")
+        assert tag is not None and tag.value == icc
+
+
+def test_write_image_16bit_rgb_stays_compressed(tmp_path):
+    """A compressed 16-bit source is not re-written uncompressed (no bloat)."""
+    src = tmp_path / "scan.tif"
+    arr = (np.random.default_rng(3).random((10, 8, 3)) * 65535).astype(np.uint16)
+    tifffile.imwrite(src, arr, photometric="rgb", compression="adobe_deflate")
+    dst = tmp_path / "out.tif"
+    entry = _sample_entry()
+
+    write_image(src, dst, build_exif(entry), entry)
+
+    with tifffile.TiffFile(dst) as tf:
+        assert int(tf.pages[0].compression) != 1  # not COMPRESSION.NONE
 
 
 def test_build_exif_gps(tmp_path):

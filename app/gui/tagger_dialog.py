@@ -131,7 +131,7 @@ class ExportWorker(QThread):
                 dst = output_path(
                     self._root, reel, document, number, frame.source_path.suffix
                 )
-                write_image(frame.source_path, dst, exif_bytes)
+                write_image(frame.source_path, dst, exif_bytes, entry)
                 written += 1
                 self.progress.emit(i, total)
             self.finished.emit(written)
