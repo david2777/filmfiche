@@ -7,19 +7,32 @@ of scanned files). Edits are written straight back into each
 :class:`~app.models.film_frame.FilmFrame`'s ``entry`` dict; keys that are present
 in a frame but not shown as a column (imported from JSON, e.g. ``LensMake`` or the
 GPS refs) are preserved untouched.
+
+The Date column uses a :class:`DateTimeDelegate` so editing it opens a calendar /
+spin editor that can only produce a valid EXIF ``YYYY:MM:DD HH:MM:SS`` string,
+rather than free text.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QDateTime, QSize, Qt
 from PySide6.QtGui import QIcon, QImage, QPixmap
-from PySide6.QtWidgets import QAbstractItemView, QTableWidget, QTableWidgetItem
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QDateTimeEdit,
+    QStyledItemDelegate,
+    QTableWidget,
+    QTableWidgetItem,
+)
 
 from app.models.film_frame import FilmFrame
 
 _THUMB_PX = 96
+
+# Qt display/parse format mirroring the EXIF ``DateTimeOriginal`` string layout.
+EXIF_DT_FORMAT = "yyyy:MM:dd HH:mm:ss"
 
 # (header label, entry key). ``None`` = thumbnail column (icon only);
 # ``"_file"`` = read-only source filename; any other string is an editable
@@ -38,6 +51,41 @@ _COLUMNS: tuple[tuple[str, str | None], ...] = (
     ("GPS Lon", "GPSLongitude"),
 )
 _THUMB_COL = 0
+_DATE_KEY = "DateTimeOriginal"
+_DATE_COL = next(i for i, (_, key) in enumerate(_COLUMNS) if key == _DATE_KEY)
+
+
+class DateTimeDelegate(QStyledItemDelegate):
+    """In-cell editor that constrains the Date column to a valid datetime.
+
+    Opens a :class:`QDateTimeEdit` (with a calendar popup) instead of a free-text
+    field, and reads/writes the value in the EXIF ``YYYY:MM:DD HH:MM:SS`` form so
+    it round-trips unchanged through :func:`~app.core.tagger.build_exif`.
+    """
+
+    def createEditor(self, parent, option, index):
+        """Return a calendar-backed datetime spin editor."""
+        editor = QDateTimeEdit(parent)
+        editor.setDisplayFormat(EXIF_DT_FORMAT)
+        editor.setCalendarPopup(True)
+        return editor
+
+    def setEditorData(self, editor, index):
+        """Seed the editor from the cell, falling back to *now* if blank/invalid."""
+        text = index.data(Qt.ItemDataRole.EditRole) or ""
+        dt = QDateTime.fromString(str(text), EXIF_DT_FORMAT)
+        if not dt.isValid():
+            dt = QDateTime.currentDateTime()
+        editor.setDateTime(dt)
+
+    def setModelData(self, editor, model, index):
+        """Write the chosen datetime back as an EXIF-formatted string."""
+        editor.interpretText()
+        model.setData(
+            index,
+            editor.dateTime().toString(EXIF_DT_FORMAT),
+            Qt.ItemDataRole.EditRole,
+        )
 
 
 class FrameTable(QTableWidget):
@@ -65,6 +113,7 @@ class FrameTable(QTableWidget):
         self.verticalHeader().setDefaultSectionSize(_THUMB_PX + 8)
         self.horizontalHeader().setStretchLastSection(True)
 
+        self.setItemDelegateForColumn(_DATE_COL, DateTimeDelegate(self))
         self.itemChanged.connect(self._on_item_changed)
 
     # ------------------------------------------------------------------
@@ -107,6 +156,30 @@ class FrameTable(QTableWidget):
                 self._populate_row(row, frame)
         finally:
             self._populating = False
+
+    def selected_frames(self) -> list[FilmFrame]:
+        """Return the frames for the currently selected rows, in row order."""
+        rows = sorted(idx.row() for idx in self.selectionModel().selectedRows())
+        return [self._frames[row] for row in rows]
+
+    def set_datetime_for_selected(self, value: str) -> int:
+        """Set ``DateTimeOriginal`` on every selected row to *value*.
+
+        Writes through the Date cell so the normal edit path updates each frame's
+        ``entry`` dict.
+
+        Args:
+            value: An EXIF-formatted datetime string (``YYYY:MM:DD HH:MM:SS``).
+
+        Returns:
+            The number of frames updated.
+        """
+        rows = sorted(idx.row() for idx in self.selectionModel().selectedRows())
+        for row in rows:
+            item = self.item(row, _DATE_COL)
+            if item is not None:
+                item.setText(value)
+        return len(rows)
 
     def set_thumbnail(self, frame: FilmFrame, image: QImage) -> None:
         """Cache and display the thumbnail for *frame* from a ``QImage``."""

@@ -57,7 +57,7 @@ filmfiche/
             ├── filter_panel.py
             ├── file_table.py      # Scan-results table (model/view) + selection
             ├── drop_area.py       # Drag-drop / browse target (tagger)
-            └── frame_table.py     # Editable per-frame metadata grid w/ thumbnails (tagger)
+            └── frame_table.py     # Editable per-frame metadata grid w/ thumbnails + DateTimeDelegate (tagger)
 ```
 
 ### Key Data Flow
@@ -164,6 +164,19 @@ lens/exposure/etc per frame, **or** Import JSON → **Export…** to a chosen ro
   correctly. Thumbnails are cached by frame identity (`id(frame)`), so they follow
   their frames on reorder and a still-loading thumbnail can't land on the wrong
   row.
+
+- **Date editing**: the Date column edits through a `DateTimeDelegate`
+  (`frame_table.py`) — a calendar/clock `QDateTimeEdit` that can only emit a valid
+  EXIF `YYYY:MM:DD HH:MM:SS` string (the shared `EXIF_DT_FORMAT` Qt format),
+  instead of free text. `setModelData` writes through the cell so the usual
+  `_on_item_changed` path updates `frame.entry`.
+
+- **Set Date for Selected button**: sits next to Reverse Order; enabled only while
+  rows are selected (tracked via `itemSelectionChanged`). Opens
+  `DateTimePickerDialog` (`tagger_dialog.py`, seeded from the first selected
+  frame's existing date) and applies the chosen datetime to every selected row via
+  `FrameTable.set_datetime_for_selected(value)`. `FrameTable.selected_frames()`
+  returns the selected frames in row order.
 
 - **Metadata model**: each frame's per-item values are a plain dict keyed exactly
   like the Lightme/Logbook JSON schema, so `build_exif` is reused unchanged and

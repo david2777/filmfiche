@@ -6,10 +6,16 @@ from pathlib import Path
 import piexif
 import pytest
 from PIL import Image
+from PySide6.QtCore import QDate, QDateTime, QItemSelectionModel, QTime
 from PySide6.QtWidgets import QApplication
 
-from app.gui.tagger_dialog import ExportWorker, TaggerDialog
+from app.gui.tagger_dialog import DateTimePickerDialog, ExportWorker, TaggerDialog
 from app.gui.widgets.drop_area import collect_image_paths
+from app.gui.widgets.frame_table import (
+    EXIF_DT_FORMAT,
+    _DATE_COL,
+    DateTimeDelegate,
+)
 from app.models.film_frame import FilmFrame
 
 
@@ -36,6 +42,15 @@ def _drain_thumbnails(dialog: TaggerDialog) -> None:
 
 def _two_jpegs(tmp_path: Path) -> list[Path]:
     return [_make_jpeg(tmp_path / "a.jpg"), _make_jpeg(tmp_path / "b.jpg")]
+
+
+def _select_rows(table, rows: list[int]) -> None:
+    """Select whole *rows* in *table* via the selection model."""
+    sel = table.selectionModel()
+    sel.clearSelection()
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    for row in rows:
+        sel.select(table.model().index(row, 0), flags)
 
 
 # ---------------------------------------------------------------------------
@@ -226,3 +241,88 @@ def test_export_worker_errors_without_reel(qapp, tmp_path):
     QApplication.processEvents()
 
     assert errors and "Reel Name" in errors[0]
+
+
+# ---------------------------------------------------------------------------
+# Date editing
+# ---------------------------------------------------------------------------
+
+def test_date_column_uses_datetime_delegate(qapp, tmp_path):
+    """The Date column edits through a DateTimeDelegate, not a plain text cell."""
+    dialog = TaggerDialog()
+    dialog._add_paths(_two_jpegs(tmp_path))
+    _drain_thumbnails(dialog)
+    assert isinstance(dialog._table.itemDelegateForColumn(_DATE_COL), DateTimeDelegate)
+
+
+def test_date_delegate_writes_exif_format(qapp, tmp_path):
+    """Editing via the delegate stores the EXIF YYYY:MM:DD HH:MM:SS string."""
+    dialog = TaggerDialog()
+    dialog._add_paths(_two_jpegs(tmp_path))
+    _drain_thumbnails(dialog)
+    table = dialog._table
+    delegate = table.itemDelegateForColumn(_DATE_COL)
+    index = table.model().index(0, _DATE_COL)
+
+    editor = delegate.createEditor(table, None, index)
+    editor.setDateTime(QDateTime(QDate(2026, 5, 9), QTime(15, 8, 49)))
+    delegate.setModelData(editor, table.model(), index)
+
+    assert table.frames()[0].entry["DateTimeOriginal"] == "2026:05:09 15:08:49"
+
+
+def test_date_delegate_seeds_editor_from_existing_value(qapp, tmp_path):
+    """Opening the editor pre-selects the frame's current datetime."""
+    dialog = TaggerDialog()
+    dialog._add_paths(_two_jpegs(tmp_path))
+    _drain_thumbnails(dialog)
+    table = dialog._table
+    table.frames()[0].entry["DateTimeOriginal"] = "2020:01:02 03:04:05"
+    table.refresh()
+
+    delegate = table.itemDelegateForColumn(_DATE_COL)
+    index = table.model().index(0, _DATE_COL)
+    editor = delegate.createEditor(table, None, index)
+    delegate.setEditorData(editor, index)
+
+    assert editor.dateTime().toString(EXIF_DT_FORMAT) == "2020:01:02 03:04:05"
+
+
+def test_datetime_picker_returns_exif_format(qapp):
+    """The picker dialog exposes its value as an EXIF-formatted string."""
+    dlg = DateTimePickerDialog(QDateTime(QDate(2026, 6, 18), QTime(9, 30, 0)))
+    assert dlg.value() == "2026:06:18 09:30:00"
+
+
+def test_set_datetime_for_selected_applies_only_to_selection(qapp, tmp_path):
+    """Set Date writes the value to selected frames and leaves the rest alone."""
+    paths = [_make_jpeg(tmp_path / f"{c}.jpg") for c in "abc"]
+    dialog = TaggerDialog()
+    dialog._add_paths(collect_image_paths(paths))
+    _drain_thumbnails(dialog)
+    table = dialog._table
+    _select_rows(table, [0, 2])
+
+    count = table.set_datetime_for_selected("2026:05:09 15:08:49")
+
+    assert count == 2
+    frames = table.frames()
+    assert frames[0].entry["DateTimeOriginal"] == "2026:05:09 15:08:49"
+    assert frames[2].entry["DateTimeOriginal"] == "2026:05:09 15:08:49"
+    assert "DateTimeOriginal" not in frames[1].entry
+
+
+def test_set_date_button_tracks_selection(qapp, tmp_path):
+    """The Set Date button enables only while at least one row is selected."""
+    dialog = TaggerDialog()
+    assert not dialog._set_date_btn.isEnabled()
+
+    dialog._add_paths(_two_jpegs(tmp_path))
+    _drain_thumbnails(dialog)
+    assert not dialog._set_date_btn.isEnabled()  # nothing selected yet
+
+    _select_rows(dialog._table, [0])
+    assert dialog._set_date_btn.isEnabled()
+
+    dialog._table.selectionModel().clearSelection()
+    assert not dialog._set_date_btn.isEnabled()

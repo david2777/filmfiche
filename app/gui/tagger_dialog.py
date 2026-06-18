@@ -13,10 +13,12 @@ import json
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QSettings, QThread, Signal
+from PySide6.QtCore import QDateTime, QSettings, QThread, Signal
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (
+    QDateTimeEdit,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -30,7 +32,7 @@ from PySide6.QtWidgets import (
 
 from app.core.tagger import build_exif, output_path, write_image
 from app.gui.widgets.drop_area import DropArea
-from app.gui.widgets.frame_table import FrameTable
+from app.gui.widgets.frame_table import EXIF_DT_FORMAT, FrameTable
 from app.models.film_frame import FilmFrame, build_full_entry, frames_from_json
 
 _THUMB_PX = 96
@@ -139,6 +141,42 @@ class ExportWorker(QThread):
             self.error.emit(str(e))
 
 
+class DateTimePickerDialog(QDialog):
+    """Modal calendar / clock picker returning an EXIF-formatted datetime string."""
+
+    def __init__(self, initial: QDateTime | None = None, parent=None):
+        """Build the picker.
+
+        Args:
+            initial: Datetime to pre-select; defaults to *now* when ``None`` or
+                invalid.
+            parent: Optional parent widget.
+        """
+        super().__init__(parent)
+        self.setWindowTitle("Set Date / Time")
+
+        if initial is None or not initial.isValid():
+            initial = QDateTime.currentDateTime()
+        self._edit = QDateTimeEdit(initial)
+        self._edit.setDisplayFormat(EXIF_DT_FORMAT)
+        self._edit.setCalendarPopup(True)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Date / time to apply to the selected frame(s):"))
+        layout.addWidget(self._edit)
+        layout.addWidget(buttons)
+
+    def value(self) -> str:
+        """Return the chosen datetime as an EXIF ``YYYY:MM:DD HH:MM:SS`` string."""
+        return self._edit.dateTime().toString(EXIF_DT_FORMAT)
+
+
 class TaggerDialog(QDialog):
     """Drag-drop / browse → edit metadata → export tagged film scans."""
 
@@ -198,8 +236,15 @@ class TaggerDialog(QDialog):
         )
         self._reverse_btn.setEnabled(False)
 
+        self._set_date_btn = QPushButton("Set Date for Selected…")
+        self._set_date_btn.setToolTip(
+            "Open a date/time picker and apply it to every selected frame."
+        )
+        self._set_date_btn.setEnabled(False)
+
         table_toolbar = QHBoxLayout()
         table_toolbar.addWidget(self._reverse_btn)
+        table_toolbar.addWidget(self._set_date_btn)
         table_toolbar.addStretch()
 
         self._table = FrameTable()
@@ -225,6 +270,8 @@ class TaggerDialog(QDialog):
         self._drop.paths_added.connect(self._add_paths)
         self._import_btn.clicked.connect(self._on_import_json)
         self._reverse_btn.clicked.connect(self._on_reverse)
+        self._set_date_btn.clicked.connect(self._on_set_date)
+        self._table.itemSelectionChanged.connect(self._update_set_date_enabled)
         self._export_btn.clicked.connect(self._on_export)
         self._reel.textChanged.connect(self._update_export_enabled)
 
@@ -255,6 +302,23 @@ class TaggerDialog(QDialog):
         count = len(self._table.frames())
         if count:
             self._status.setText(f"Reversed frame order ({count} frame(s)).")
+
+    def _update_set_date_enabled(self) -> None:
+        self._set_date_btn.setEnabled(bool(self._table.selected_frames()))
+
+    def _on_set_date(self) -> None:
+        selected = self._table.selected_frames()
+        if not selected:
+            self._status.setText("Select one or more frames first.")
+            return
+        existing = selected[0].entry.get("DateTimeOriginal")
+        initial = (
+            QDateTime.fromString(str(existing), EXIF_DT_FORMAT) if existing else None
+        )
+        dialog = DateTimePickerDialog(initial, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            count = self._table.set_datetime_for_selected(dialog.value())
+            self._status.setText(f"Set date on {count} frame(s).")
 
     def _forget_worker(self, worker: ThumbnailWorker) -> None:
         if worker in self._thumb_workers:
